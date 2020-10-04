@@ -9,33 +9,27 @@ function createModule(entrypoint) {
   const ast = espree.parse(content, { ecmaVersion: 12, sourceType: "module" });
 
   const root = {
-    id: 1,
-    filepath: path.join(process.cwd(), entrypoint),
-    isEntryFile: true,
-    dependencies: [],
+    module: {
+      filepath: path.join(process.cwd(), entrypoint),
+      isEntryFile: true,
+      dependencies: [],
+    },
+    exports: [],
   };
   console.log("root filepath", root.filepath);
-  const dependencyGraph = createGraph(ast, root);
+  const dependencyGraph = createGraph(ast, root.module, root.exports);
   return dependencyGraph;
 }
 
-function createGraph(ast, moduleNode) {
+function createGraph(ast, moduleNode, exportName) {
   const module = ast.body.forEach((node) => {
     if (node.type === "ExportDefaultDeclaration") {
-      // If exported default is a literal
       if (node.declaration.type === "Literal") {
-        // console.log("in module id: ", moduleNode.id);
-        moduleNode.dependencies.push({
-          module: {},
-          exports: node.declaration.value,
-        });
+        // If exported default is a literal
+        exportName.push(node.declaration.value);
       } else if (node.declaration.type === "Identifier") {
         //If exported default is an identifier
-        console.log("in module id: ", moduleNode.id);
-        moduleNode.dependencies.push({
-          module: {},
-          exports: node.declaration.name,
-        });
+        exportName.push(node.declaration.name);
       }
     } else if (node.type === "ExportNamedDeclaration") {
       // TODO:
@@ -69,7 +63,6 @@ function createGraph(ast, moduleNode) {
 
       console.log("this module filepath", filepath);
       const module = {
-        id: moduleNode.id + 1,
         filepath,
         isEntryFile: false,
         dependencies: [],
@@ -86,7 +79,7 @@ function createGraph(ast, moduleNode) {
         ecmaVersion: 12,
         sourceType: "module",
       });
-      createGraph(nextModuleAst, module);
+      createGraph(nextModuleAst, dependency.module, dependency.exports);
     }
   });
   return moduleNode;
