@@ -1,0 +1,4 @@
+/node_modules
+# Internal tests
+test-file-outside.js
+test/
