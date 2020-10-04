@@ -21,7 +21,25 @@ function createModule(entrypoint) {
 
 function createGraph(ast, moduleNode) {
   const module = ast.body.forEach((node) => {
-    if (node.type === "ImportDeclaration") {
+    if (node.type === "ExportDefaultDeclaration") {
+      // If exported default is a literal
+      if (node.declaration.type === "Literal") {
+        // console.log("in module id: ", moduleNode.id);
+        moduleNode.dependencies.push({
+          module: {},
+          exports: node.declaration.value,
+        });
+      } else if (node.declaration.type === "Identifier") {
+        //If exported default is an identifier
+        console.log("in module id: ", moduleNode.id);
+        moduleNode.dependencies.push({
+          module: {},
+          exports: node.declaration.name,
+        });
+      }
+    } else if (node.type === "ExportNamedDeclaration") {
+      // TODO:
+    } else if (node.type === "ImportDeclaration") {
       let filename = node.source.value;
       const isRelativeImport = !path.isAbsolute(filename);
       let filepath = null;
@@ -90,12 +108,12 @@ function isDirectory(parentFilename, currentFilename) {
   }
 }
 
-const singleEntrypoint = "./test/tiger.js";
+const singleEntrypoint = "./test/main.js";
 
 // a dependency graph will be returned for every filepath
 // const multipleEntrypoints = { index: "./test/index.js" };
 
 // entrypoint could be a directory or a file
 // for a directory, we need to find index.js
-
 console.log(JSON.stringify(createModule(singleEntrypoint), " ", 2));
+module.exports = createModule;
