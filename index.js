@@ -10,19 +10,20 @@ function createModule(entrypoint) {
 
   const root = {
     module: {
-      filepath: path.join(process.cwd(), entrypoint),
+      // filepath: path.join(process.cwd(), entrypoint),
+      filepath: entrypoint,
       isEntryFile: true,
       dependencies: [],
     },
     exports: [],
   };
-  console.log("root filepath", root.filepath);
+
   const dependencyGraph = createGraph(ast, root.module, root.exports);
   return dependencyGraph;
 }
 
 function createGraph(ast, moduleNode, exportName) {
-  const module = ast.body.forEach((node) => {
+  ast.body.forEach((node) => {
     if (node.type === "ExportDefaultDeclaration") {
       if (node.declaration.type === "Literal") {
         // If exported default is a literal
@@ -35,33 +36,25 @@ function createGraph(ast, moduleNode, exportName) {
       // TODO:
     } else if (node.type === "ImportDeclaration") {
       let filename = node.source.value;
-      const isRelativeImport = !path.isAbsolute(filename);
+      // const isRelativeImport = !path.isAbsolute(filename);
       let filepath = null;
 
-      if (isRelativeImport) {
-        // Check if node module, file or directory
-        // If node module
-        // TODO:
-        // If directory
-        if (isDirectory(moduleNode.filepath, filename)) {
-          filename = path.join(
-            path.dirname(moduleNode.filepath),
-            filename,
-            "index.js"
-          );
-          filepath = filename;
-        } else {
-          // If file
-          console.log("extension", path.extname(filename));
-          filename =
-            path.extname(filename).length === 0 ? `${filename}.js` : filename;
-          filepath = path.join(path.dirname(moduleNode.filepath), filename);
-        }
-      } else {
+      if (path.isAbsolute(filename)) {
         filepath = filename;
+      } else {
+        // Check if node module, file or directory
+        if (isFileOrDirectory(filename)) {
+          ({ filename, filepath } = getDirectoryOrFilepaths(
+            moduleNode.filepath,
+            filename
+          ));
+        } else if (isNodeModule(filename)) {
+          // If node_module
+        } else {
+          throw "File not found!";
+        }
       }
 
-      console.log("this module filepath", filepath);
       const module = {
         filepath,
         isEntryFile: false,
@@ -73,6 +66,7 @@ function createGraph(ast, moduleNode, exportName) {
       };
       moduleNode.dependencies.push(dependency);
 
+      console.log({ filepath });
       // Intensionally throw when file doesn't exist
       const content = fs.readFileSync(filepath, "utf8");
       const nextModuleAst = espree.parse(content, {
@@ -85,23 +79,87 @@ function createGraph(ast, moduleNode, exportName) {
   return moduleNode;
 }
 
-function isDirectory(parentFilename, currentFilename) {
-  if (path.extname(currentFilename).length !== 0) return false;
+function isNodeModule(filename) {
+  // recursively find node_modules folder name
+}
 
-  try {
-    if (
-      fs.existsSync(
-        path.join(path.dirname(parentFilename), currentFilename, "index.js")
-      )
-    ) {
-      return true;
+function isFileOrDirectory(filename) {
+  return new RegExp(/^(\.{2}\/|\.)/).test(filename);
+}
+
+function getDirectoryOrFilepaths(parentFilename, currentFilename) {
+  if (path.extname(currentFilename).length !== 0) {
+    // If file with file extension
+    return {
+      filename: currentFilename,
+      filepath: path.join(path.dirname(parentFilename), currentFilename),
+    };
+  } else if (
+    fs.existsSync(
+      path.join(path.dirname(parentFilename), currentFilename, "index.js")
+    )
+  ) {
+    // If folder contains an index.js, it's a directory
+    const filename = path.join(
+      path.dirname(parentFilename),
+      currentFilename,
+      "index.js"
+    );
+    return {
+      filename,
+      filepath: filename,
+    };
+  } else {
+    const containsPkgManifestJson = fs.existsSync(
+      path.join(path.dirname(parentFilename), currentFilename, "package.json")
+    );
+
+    if (containsPkgManifestJson) {
+      // If folder contains a package.json and
+      // has a file as declared in package.json main, it's a directory
+      const pkgManifestFilepath = path.join(
+        path.dirname(parentFilename),
+        currentFilename,
+        "package.json"
+      );
+      // We want to intensionally throw if there is an error parsing package.json
+      const pkgManifestJson = JSON.parse(
+        fs.readFileSync(pkgManifestFilepath, "utf8")
+      );
+      const packageFilepath = pkgManifestJson.main;
+      if (
+        fs.existsSync(
+          path.join(
+            path.dirname(parentFilename),
+            currentFilename,
+            packageFilepath
+          )
+        )
+      ) {
+        const filename = path.join(
+          path.dirname(parentFilename),
+          currentFilename,
+          packageFilepath
+        );
+        return {
+          filename,
+          filepath: filename,
+        };
+      }
     }
-  } catch (error) {
-    return false;
+
+    // Otherwise, it's a file with no file extensions
+    return {
+      filename: `${currentFilename}.js`,
+      filepath: path.join(
+        path.dirname(parentFilename),
+        `${currentFilename}.js`
+      ),
+    };
   }
 }
 
-const singleEntrypoint = "./test/main.js";
+const singleEntrypoint = "";
 
 // a dependency graph will be returned for every filepath
 // const multipleEntrypoints = { index: "./test/index.js" };
