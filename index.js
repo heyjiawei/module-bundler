@@ -32,7 +32,27 @@ function createGraph(ast, moduleNode, exportName) {
         exportName.push(node.declaration.name);
       }
     } else if (node.type === "ExportNamedDeclaration") {
-      // TODO:
+      console.log(node);
+      if (node.declaration?.type === "VariableDeclaration") {
+        // If exported is a variable
+        node.declaration.declarations.forEach((declaration) => {
+          if (declaration.type === "VariableDeclarator") {
+            exportName.push(declaration.id.name);
+          }
+        });
+      } else if (node.specifiers.length > 0) {
+        // If exported is an ExportSpecifier
+        node.specifiers.forEach((specifier) => {
+          if (specifier.type === "ExportSpecifier") {
+            exportName.push(specifier.exported.name);
+          }
+        });
+        // TODO:
+        // Link module to import path
+      }
+    } else if (node.type === "ExportAllDeclaration") {
+      // TODO: handle export * as g from './g';
+      // TODO: Link module to import path
     } else if (node.type === "ImportDeclaration") {
       let filename = node.source.value;
       // const isRelativeImport = !path.isAbsolute(filename);
@@ -190,7 +210,8 @@ function getDirectoryOrFilepaths(parentFilepath, currentFilename) {
   }
 }
 
-const singleEntrypoint = "";
+const singleEntrypoint =
+  "/home/jiawei/Documents/rk-webpack-clone/assignments/01/fixtures/03/code/main.js";
 
 // a dependency graph will be returned for every filepath
 // const multipleEntrypoints = { index: "./test/index.js" };
