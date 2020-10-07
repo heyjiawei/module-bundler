@@ -10,7 +10,6 @@ function createModule(entrypoint) {
 
   const root = {
     module: {
-      // filepath: path.join(process.cwd(), entrypoint),
       filepath: entrypoint,
       isEntryFile: true,
       dependencies: [],
@@ -48,10 +47,14 @@ function createGraph(ast, moduleNode, exportName) {
             moduleNode.filepath,
             filename
           ));
-        } else if (isNodeModule(filename)) {
-          // If node_module
         } else {
-          throw "File not found!";
+          // Recursively search in node_module
+          filepath = getPathInNodeModule(moduleNode.filepath, filename);
+
+          if (filepath.length === 0) {
+            // Otherwise file doesn't exist
+            throw "File not found!";
+          }
         }
       }
 
@@ -79,29 +82,57 @@ function createGraph(ast, moduleNode, exportName) {
   return moduleNode;
 }
 
-function isNodeModule(filename) {
-  // recursively find node_modules folder name
+function getPathInNodeModule(parentFilepath, packageName) {
+  const parts = parentFilepath.split(path.sep);
+  const folderCount = parts.length - 1;
+  while (folderCount >= 0) {
+    parts.pop();
+    const nodeModuleDir = path.join(parts.join(path.sep), "node_modules");
+    if (fs.existsSync(nodeModuleDir)) {
+      // Find if packageName exist in nodeModuleDir
+      const pkgManifestFilepath = path.join(
+        nodeModuleDir,
+        packageName,
+        "package.json"
+      );
+      if (fs.existsSync(pkgManifestFilepath)) {
+        const pkgManifestJson = JSON.parse(
+          fs.readFileSync(pkgManifestFilepath, "utf8")
+        );
+        const packageFilepath = pkgManifestJson.main;
+        if (
+          fs.existsSync(path.join(nodeModuleDir, packageName, packageFilepath))
+        ) {
+          return path.join(nodeModuleDir, packageName, packageFilepath);
+        }
+      }
+      // If node modules does not contain package, return nothing
+      // if it contains package and file matches, return filepath
+      // and break loop
+    }
+  }
+  return "";
 }
 
 function isFileOrDirectory(filename) {
   return new RegExp(/^(\.{2}\/|\.)/).test(filename);
 }
 
-function getDirectoryOrFilepaths(parentFilename, currentFilename) {
+function getDirectoryOrFilepaths(parentFilepath, currentFilename) {
   if (path.extname(currentFilename).length !== 0) {
     // If file with file extension
     return {
       filename: currentFilename,
-      filepath: path.join(path.dirname(parentFilename), currentFilename),
+      filepath: path.join(path.dirname(parentFilepath), currentFilename),
     };
   } else if (
     fs.existsSync(
-      path.join(path.dirname(parentFilename), currentFilename, "index.js")
+      path.join(path.dirname(parentFilepath), currentFilename, "index.js")
     )
   ) {
     // If folder contains an index.js, it's a directory
     const filename = path.join(
-      path.dirname(parentFilename),
+      path.dirname(parentFilepath),
       currentFilename,
       "index.js"
     );
@@ -111,14 +142,14 @@ function getDirectoryOrFilepaths(parentFilename, currentFilename) {
     };
   } else {
     const containsPkgManifestJson = fs.existsSync(
-      path.join(path.dirname(parentFilename), currentFilename, "package.json")
+      path.join(path.dirname(parentFilepath), currentFilename, "package.json")
     );
 
     if (containsPkgManifestJson) {
       // If folder contains a package.json and
       // has a file as declared in package.json main, it's a directory
       const pkgManifestFilepath = path.join(
-        path.dirname(parentFilename),
+        path.dirname(parentFilepath),
         currentFilename,
         "package.json"
       );
@@ -130,14 +161,14 @@ function getDirectoryOrFilepaths(parentFilename, currentFilename) {
       if (
         fs.existsSync(
           path.join(
-            path.dirname(parentFilename),
+            path.dirname(parentFilepath),
             currentFilename,
             packageFilepath
           )
         )
       ) {
         const filename = path.join(
-          path.dirname(parentFilename),
+          path.dirname(parentFilepath),
           currentFilename,
           packageFilepath
         );
@@ -152,7 +183,7 @@ function getDirectoryOrFilepaths(parentFilename, currentFilename) {
     return {
       filename: `${currentFilename}.js`,
       filepath: path.join(
-        path.dirname(parentFilename),
+        path.dirname(parentFilepath),
         `${currentFilename}.js`
       ),
     };
