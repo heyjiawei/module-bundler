@@ -23,60 +23,99 @@ function createModule(entrypoint) {
 
 function createGraph(ast, moduleNode, exportName) {
   ast.body.forEach((node) => {
-    if (node.type === "ExportDefaultDeclaration") {
-      if (node.declaration.type === "Literal") {
-        // If exported default is a literal
-        exportName.push(node.declaration.value);
-      } else if (node.declaration.type === "Identifier") {
-        //If exported default is an identifier
-        exportName.push(node.declaration.name);
-      }
-    } else if (node.type === "ExportNamedDeclaration") {
-      console.log(node);
-      if (node.declaration?.type === "VariableDeclaration") {
-        // If exported is a variable
-        node.declaration.declarations.forEach((declaration) => {
-          if (declaration.type === "VariableDeclarator") {
-            exportName.push(declaration.id.name);
-          }
-        });
-      } else if (node.specifiers.length > 0) {
-        // If exported is an ExportSpecifier
-        node.specifiers.forEach((specifier) => {
-          if (specifier.type === "ExportSpecifier") {
-            exportName.push(specifier.exported.name);
-          }
-        });
-        // TODO:
-        // Link module to import path
-      }
-    } else if (node.type === "ExportAllDeclaration") {
-      // TODO: handle export * as g from './g';
-      // TODO: Link module to import path
-    } else if (node.type === "ImportDeclaration") {
-      let filename = node.source.value;
-      // const isRelativeImport = !path.isAbsolute(filename);
-      let filepath = null;
+    // if (node.type === "ExportDefaultDeclaration") {
+    //   // if (node.declaration.type === "Literal") {
+    //   //   // If exported default is a literal
+    //   //   exportName.push(node.declaration.value);
+    //   // } else if (node.declaration.type === "Identifier") {
+    //   //   //If exported default is an identifier
+    //   //   exportName.push(node.declaration.name);
+    //   // }
+    //   // exportName.push("default");
+    // } else if (node.type === "ExportNamedDeclaration") {
+    //   if (node.declaration?.type === "VariableDeclaration") {
+    //     // If exported is a variable
+    //     node.declaration.declarations.forEach((declaration) => {
+    //       if (declaration.type === "VariableDeclarator") {
+    //         exportName.push(declaration.id.name);
+    //       }
+    //     });
+    //   } else if (node.specifiers.length > 0) {
+    //     // If exported is an ExportSpecifier
+    //     node.specifiers.forEach((specifier) => {
+    //       if (specifier.type === "ExportSpecifier") {
+    //         exportName.push(specifier.exported.name);
+    //       }
+    //     });
+    //     // TODO: Link module to import path
+    //     const filepath = getFilepathFromSourceASTNode(moduleNode, node);
 
-      if (path.isAbsolute(filename)) {
-        filepath = filename;
-      } else {
-        // Check if node module, file or directory
-        if (isFileOrDirectory(filename)) {
-          ({ filename, filepath } = getDirectoryOrFilepaths(
-            moduleNode.filepath,
-            filename
-          ));
-        } else {
-          // Recursively search in node_module
-          filepath = getPathInNodeModule(moduleNode.filepath, filename);
+    //     const module = {
+    //       filepath,
+    //       isEntryFile: false,
+    //       dependencies: [],
+    //     };
+    //     const dependency = {
+    //       module,
+    //       exports: [],
+    //     };
+    //     moduleNode.dependencies.push(dependency);
 
-          if (filepath.length === 0) {
-            // Otherwise file doesn't exist
-            throw "File not found!";
-          }
+    //     console.log({ filepath });
+    //     // Intensionally throw when file doesn't exist
+    //     const content = fs.readFileSync(filepath, "utf8");
+    //     const nextModuleAst = espree.parse(content, {
+    //       ecmaVersion: 12,
+    //       sourceType: "module",
+    //     });
+    //     createGraph(nextModuleAst, dependency.module, dependency.exports);
+    //   }
+    // } else if (node.type === "ExportAllDeclaration") {
+    //   // Handle export * as g from './g';
+    //   exportName.push(node.exported.name);
+
+    //   // TODO: Link module to import path
+    //   const filepath = getFilepathFromSourceASTNode(moduleNode, node);
+
+    //   const module = {
+    //     filepath,
+    //     isEntryFile: false,
+    //     dependencies: [],
+    //   };
+    //   const dependency = {
+    //     module,
+    //     exports: [],
+    //   };
+    //   moduleNode.dependencies.push(dependency);
+
+    //   console.log({ filepath });
+    //   // Intensionally throw when file doesn't exist
+    //   const content = fs.readFileSync(filepath, "utf8");
+    //   const nextModuleAst = espree.parse(content, {
+    //     ecmaVersion: 12,
+    //     sourceType: "module",
+    //   });
+    //   createGraph(nextModuleAst, dependency.module, dependency.exports);
+    // } else
+
+    if (node.type === "ImportDeclaration") {
+      const filepath = getFilepathFromSourceASTNode(moduleNode, node);
+      let exports = [];
+      node.specifiers.forEach((specifier) => {
+        if (specifier.type === "ImportNamespaceSpecifier") {
+          // handles import * as e from './e';
+          exports.push("*");
+        } else if (specifier.type === "ImportSpecifier") {
+          // Use imported identifier. That means
+          // import { b as c } from './e';
+          // will export [b]
+          exports.push(specifier.imported.name);
+        } else if (specifier.type === "ImportDefaultSpecifier") {
+          // Handles import a from './a';
+          // Use imported identifier. That means 'default'
+          exports.push("default");
         }
-      }
+      });
 
       const module = {
         filepath,
@@ -85,11 +124,13 @@ function createGraph(ast, moduleNode, exportName) {
       };
       const dependency = {
         module,
-        exports: [],
+        exports,
       };
+
       moduleNode.dependencies.push(dependency);
 
       console.log({ filepath });
+
       // Intensionally throw when file doesn't exist
       const content = fs.readFileSync(filepath, "utf8");
       const nextModuleAst = espree.parse(content, {
@@ -138,28 +179,17 @@ function isFileOrDirectory(filename) {
   return new RegExp(/^(\.{2}\/|\.)/).test(filename);
 }
 
-function getDirectoryOrFilepaths(parentFilepath, currentFilename) {
+function getFilepathOfDirectoryOrFile(parentFilepath, currentFilename) {
   if (path.extname(currentFilename).length !== 0) {
     // If file with file extension
-    return {
-      filename: currentFilename,
-      filepath: path.join(path.dirname(parentFilepath), currentFilename),
-    };
+    return path.join(path.dirname(parentFilepath), currentFilename);
   } else if (
     fs.existsSync(
       path.join(path.dirname(parentFilepath), currentFilename, "index.js")
     )
   ) {
     // If folder contains an index.js, it's a directory
-    const filename = path.join(
-      path.dirname(parentFilepath),
-      currentFilename,
-      "index.js"
-    );
-    return {
-      filename,
-      filepath: filename,
-    };
+    return path.join(path.dirname(parentFilepath), currentFilename, "index.js");
   } else {
     const containsPkgManifestJson = fs.existsSync(
       path.join(path.dirname(parentFilepath), currentFilename, "package.json")
@@ -187,26 +217,37 @@ function getDirectoryOrFilepaths(parentFilepath, currentFilename) {
           )
         )
       ) {
-        const filename = path.join(
+        return path.join(
           path.dirname(parentFilepath),
           currentFilename,
           packageFilepath
         );
-        return {
-          filename,
-          filepath: filename,
-        };
       }
     }
 
     // Otherwise, it's a file with no file extensions
-    return {
-      filename: `${currentFilename}.js`,
-      filepath: path.join(
-        path.dirname(parentFilepath),
-        `${currentFilename}.js`
-      ),
-    };
+    return path.join(path.dirname(parentFilepath), `${currentFilename}.js`);
+  }
+}
+
+function getFilepathFromSourceASTNode(parentModuleNode, node) {
+  let filename = node.source.value;
+
+  if (path.isAbsolute(filename)) {
+    return filename;
+  } else {
+    // Check if node module, file or directory
+    if (isFileOrDirectory(filename)) {
+      return getFilepathOfDirectoryOrFile(parentModuleNode.filepath, filename);
+    } else {
+      // Recursively search in node_module
+      const filepath = getPathInNodeModule(parentModuleNode.filepath, filename);
+
+      if (filepath.length === 0) {
+        // Otherwise file doesn't exist
+        throw "File not found!";
+      }
+    }
   }
 }
 
