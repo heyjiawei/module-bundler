@@ -2,100 +2,81 @@ const fs = require("fs");
 const path = require("path");
 const acorn = require("acorn");
 
+const EXPORT_ALL_DECLARATION = "ExportAllDeclaration";
+const EXPORT_NAMED_DECLARATION = "ExportNamedDeclaration";
+const EXPORT_SPECIFIER = "ExportSpecifier";
+const IMPORT_DECLARATION = "ImportDeclaration";
+const IMPORT_NAMESPACE_SPECIFIER = "ImportNamespaceSpecifier";
+const IMPORT_SPECIFIER = "ImportSpecifier";
+const IMPORT_DEFAULT_SPECIFIER = "ImportDefaultSpecifier";
+
+const DEPENDENCY_MAP = new Map();
+
 function createModule(entryPoint) {
   // Assume single entryPoint and entryPoint is a file
   // Read file content as string
-  const { nextModuleAst, dependency } = createDependency(entryPoint, [], {
-    isEntryFile: true,
-  });
+  const { nextModuleAst, dependency } = createDependency(entryPoint, [], true);
 
-  const dependencyGraph = createGraph(
-    nextModuleAst,
-    dependency.module,
-    dependency.exports
-  );
+  const dependencyGraph = createGraph(nextModuleAst, dependency.module);
   return dependencyGraph;
 }
 
-function createGraph(ast, moduleNode, exportName) {
+function getExports(specifiers) {
+  let exports = [];
+  specifiers.forEach((specifier) => {
+    if (specifier.type === EXPORT_SPECIFIER) {
+      exports.push(specifier.local.name);
+    } else if (specifier.type === IMPORT_NAMESPACE_SPECIFIER) {
+      // handles import * as e from './e';
+      exports.push("*");
+    } else if (specifier.type === IMPORT_SPECIFIER) {
+      // Use imported identifier. That means
+      // import { b as c } from './e';
+      // will export [b]
+      exports.push(specifier.imported.name);
+    } else if (specifier.type === IMPORT_DEFAULT_SPECIFIER) {
+      // Handles import a from './a';
+      // Use imported identifier. That means 'default'
+      exports.push("default");
+    }
+  });
+  return exports;
+}
+
+function createGraph(ast, moduleNode) {
   ast.body.forEach((node) => {
-    if (node.type === "ExportAllDeclaration") {
-      const filepath = getFilepathFromSourceASTNode(moduleNode, node);
-      let exports = ["*"];
-
+    if (node.type === EXPORT_ALL_DECLARATION) {
+      const {
+        nextModuleAst,
+        dependency,
+      } = createDependency(getFilepathFromSourceASTNode(moduleNode, node), [
+        "*",
+      ]);
+      moduleNode.dependencies.push(dependency);
+      createGraph(nextModuleAst, dependency.module);
+    } else if (node.type === EXPORT_NAMED_DECLARATION && node.source) {
       const { nextModuleAst, dependency } = createDependency(
-        filepath,
-        exports,
-        {
-          parentModuleNode: moduleNode,
-          currentNode: node,
-        }
+        getFilepathFromSourceASTNode(moduleNode, node),
+        getExports(node.specifiers)
       );
       moduleNode.dependencies.push(dependency);
-      createGraph(nextModuleAst, dependency.module, dependency.exports);
-    } else if (node.type === "ExportNamedDeclaration" && node.source) {
-      const filepath = getFilepathFromSourceASTNode(moduleNode, node);
-      let exports = [];
-      node.specifiers.forEach((specifier) => {
-        if (specifier.type === "ExportSpecifier") {
-          exports.push(specifier.local.name);
-        }
-      });
-
+      createGraph(nextModuleAst, dependency.module);
+    } else if (node.type === IMPORT_DECLARATION) {
       const { nextModuleAst, dependency } = createDependency(
-        filepath,
-        exports,
-        {
-          parentModuleNode: moduleNode,
-          currentNode: node,
-        }
-      );
-      moduleNode.dependencies.push(dependency);
-      createGraph(nextModuleAst, dependency.module, dependency.exports);
-    } else if (node.type === "ImportDeclaration") {
-      const filepath = getFilepathFromSourceASTNode(moduleNode, node);
-      let exports = [];
-      node.specifiers.forEach((specifier) => {
-        if (specifier.type === "ImportNamespaceSpecifier") {
-          // handles import * as e from './e';
-          exports.push("*");
-        } else if (specifier.type === "ImportSpecifier") {
-          // Use imported identifier. That means
-          // import { b as c } from './e';
-          // will export [b]
-          exports.push(specifier.imported.name);
-        } else if (specifier.type === "ImportDefaultSpecifier") {
-          // Handles import a from './a';
-          // Use imported identifier. That means 'default'
-          exports.push("default");
-        }
-      });
-
-      const { nextModuleAst, dependency } = createDependency(
-        filepath,
-        exports,
-        {
-          parentModuleNode: moduleNode,
-          currentNode: node,
-        }
+        getFilepathFromSourceASTNode(moduleNode, node),
+        getExports(node.specifiers)
       );
       moduleNode.dependencies.push(dependency);
 
       if (nextModuleAst) {
-        createGraph(nextModuleAst, dependency.module, dependency.exports);
+        createGraph(nextModuleAst, dependency.module);
       }
     }
   });
   return moduleNode;
 }
 
-const DEPENDENCY_MAP = new Map();
-
-function createDependency(
-  filepath,
-  exports,
-  { isEntryFile = false, parentModuleNode, currentNode }
-) {
+function createDependency(filepath, exports, isEntryFile = false) {
   // If filepath exist, it would return the same dependency reference
   const existingDependency = DEPENDENCY_MAP.get(filepath);
   if (existingDependency) {
@@ -104,6 +85,7 @@ function createDependency(
       dependency: existingDependency,
     };
   } else {
+    // Otherwise, create dependency
     const module = {
       filepath,
       isEntryFile,
@@ -116,27 +98,16 @@ function createDependency(
 
     DEPENDENCY_MAP.set(filepath, dependency);
 
-    console.log({ filepath });
+    const content = fs.readFileSync(filepath, "utf8");
+    const nextModuleAst = acorn.parse(content, {
+      ecmaVersion: 12,
+      sourceType: "module",
+    });
 
-    if (fs.existsSync(filepath)) {
-      const content = fs.readFileSync(filepath, "utf8");
-      const nextModuleAst = acorn.parse(content, {
-        ecmaVersion: 12,
-        sourceType: "module",
-      });
-
-      return {
-        nextModuleAst,
-        dependency,
-      };
-    } else {
-      // Intensionally throw when file doesn't exist
-      // TODO: throw here
-      // Require source name(?) and relative parent filepath
-      throw new Error(
-        `Unable to resolve "${currentNode.source.value}" from "${parentModuleNode.filepath}"`
-      );
-    }
+    return {
+      nextModuleAst,
+      dependency,
+    };
   }
 }
 
@@ -157,11 +128,13 @@ function getPathInNodeModule(parentFilepath, packageName) {
         const pkgManifestJson = JSON.parse(
           fs.readFileSync(pkgManifestFilepath, "utf8")
         );
-        const packageFilepath = pkgManifestJson.main;
-        if (
-          fs.existsSync(path.join(nodeModuleDir, packageName, packageFilepath))
-        ) {
-          return path.join(nodeModuleDir, packageName, packageFilepath);
+        const filepath = path.join(
+          nodeModuleDir,
+          packageName,
+          pkgManifestJson.main
+        );
+        if (fs.existsSync(filepath)) {
+          return filepath;
         }
       }
       // If node modules does not contain package, return nothing
@@ -226,29 +199,31 @@ function getFilepathOfDirectoryOrFile(parentFilepath, currentFilename) {
 
 function getFilepathFromSourceASTNode(parentModuleNode, node) {
   let filename = node.source.value;
-
-  if (!path.isAbsolute(filename)) {
-    // Check if node module, file or directory
-    if (isFileOrDirectory(filename)) {
-      return getFilepathOfDirectoryOrFile(parentModuleNode.filepath, filename);
-    } else {
-      // Recursively search in node_module
-      const filepath = getPathInNodeModule(parentModuleNode.filepath, filename);
-
-      if (filepath.length === 0) {
-        // Otherwise file doesn't exist
-        throw new Error("File not found in all node_modules");
-      }
-
-      return filepath;
-    }
+  let filepath = "";
+  if (path.isAbsolute(filename)) {
+    filepath = filename;
+  } else if (isFileOrDirectory(filename)) {
+    // Check if file or directory
+    filepath = getFilepathOfDirectoryOrFile(
+      parentModuleNode.filepath,
+      filename
+    );
+  } else {
+    // Else is node module
+    // Recursively search in node_module
+    filepath = getPathInNodeModule(parentModuleNode.filepath, filename);
   }
 
-  return filename;
+  if (fs.existsSync(filepath)) {
+    return filepath;
+  } else {
+    throw new Error(
+      `Unable to resolve "${node.source.value}" from "${parentModuleNode.filepath}"`
+    );
+  }
 }
 
-const singleEntrypoint =
-  "/home/jiawei/Documents/rk-webpack-clone/assignments/01/fixtures/03/code/main.js";
+const singleEntrypoint = "";
 
 // a dependency graph will be returned for every filepath
 // const multipleEntrypoints = { index: "./test/index.js" };
