@@ -2,22 +2,20 @@ const fs = require("fs");
 const path = require("path");
 const espree = require("espree");
 
-function createModule(entrypoint) {
-  // Assume single entrypoint and entrypoint is a file
+function createModule(entryPoint) {
+  // Assume single entryPoint and entryPoint is a file
   // Read file content as string
-  const content = fs.readFileSync(entrypoint, "utf8");
-  const ast = espree.parse(content, { ecmaVersion: 12, sourceType: "module" });
+  const { nextModuleAst: ast, dependency } = createDependency(
+    entryPoint,
+    [],
+    true
+  );
 
-  const root = {
-    module: {
-      filepath: entrypoint,
-      isEntryFile: true,
-      dependencies: [],
-    },
-    exports: [],
-  };
-
-  const dependencyGraph = createGraph(ast, root.module, root.exports);
+  const dependencyGraph = createGraph(
+    ast,
+    dependency.module,
+    dependency.exports
+  );
   return dependencyGraph;
 }
 
