@@ -23,18 +23,14 @@ function createModule(entrypoint) {
 
 function createGraph(ast, moduleNode, exportName) {
   ast.body.forEach((node) => {
-    // if (node.type === "ExportDefaultDeclaration") {
-    //   // if (node.declaration.type === "Literal") {
-    //   //   // If exported default is a literal
-    //   //   exportName.push(node.declaration.value);
-    //   // } else if (node.declaration.type === "Identifier") {
-    //   //   //If exported default is an identifier
-    //   //   exportName.push(node.declaration.name);
-    //   // }
-    //   // exportName.push("default");
-    // } else
+    if (node.type === "ExportAllDeclaration") {
+      const filepath = getFilepathFromSourceASTNode(moduleNode, node);
+      let exports = ["*"];
 
-    if (node.type === "ExportNamedDeclaration" && node.source) {
+      const { nextModuleAst, dependency } = createDependency(filepath, exports);
+      moduleNode.dependencies.push(dependency);
+      createGraph(nextModuleAst, dependency.module, dependency.exports);
+    } else if (node.type === "ExportNamedDeclaration" && node.source) {
       const filepath = getFilepathFromSourceASTNode(moduleNode, node);
       let exports = [];
       node.specifiers.forEach((specifier) => {
@@ -43,91 +39,9 @@ function createGraph(ast, moduleNode, exportName) {
         }
       });
 
-      const module = {
-        filepath,
-        isEntryFile: false,
-        dependencies: [],
-      };
-      const dependency = {
-        module,
-        exports,
-      };
-
+      const { nextModuleAst, dependency } = createDependency(filepath, exports);
       moduleNode.dependencies.push(dependency);
-
-      console.log({ filepath });
-
-      // Intensionally throw when file doesn't exist
-      const content = fs.readFileSync(filepath, "utf8");
-      const nextModuleAst = espree.parse(content, {
-        ecmaVersion: 12,
-        sourceType: "module",
-      });
       createGraph(nextModuleAst, dependency.module, dependency.exports);
-
-      //   if (node.declaration?.type === "VariableDeclaration") {
-      //     // If exported is a variable
-      //     node.declaration.declarations.forEach((declaration) => {
-      //       if (declaration.type === "VariableDeclarator") {
-      //         exportName.push(declaration.id.name);
-      //       }
-      //     });
-      //   } else if (node.specifiers.length > 0) {
-      //     // If exported is an ExportSpecifier
-      //     node.specifiers.forEach((specifier) => {
-      //       if (specifier.type === "ExportSpecifier") {
-      //         exportName.push(specifier.exported.name);
-      //       }
-      //     });
-      //     // TODO: Link module to import path
-      //     const filepath = getFilepathFromSourceASTNode(moduleNode, node);
-
-      //     const module = {
-      //       filepath,
-      //       isEntryFile: false,
-      //       dependencies: [],
-      //     };
-      //     const dependency = {
-      //       module,
-      //       exports: [],
-      //     };
-      //     moduleNode.dependencies.push(dependency);
-
-      //     console.log({ filepath });
-      //     // Intensionally throw when file doesn't exist
-      //     const content = fs.readFileSync(filepath, "utf8");
-      //     const nextModuleAst = espree.parse(content, {
-      //       ecmaVersion: 12,
-      //       sourceType: "module",
-      //     });
-      //     createGraph(nextModuleAst, dependency.module, dependency.exports);
-      //   }
-      // } else if (node.type === "ExportAllDeclaration") {
-      //   // Handle export * as g from './g';
-      //   exportName.push(node.exported.name);
-
-      //   // TODO: Link module to import path
-      //   const filepath = getFilepathFromSourceASTNode(moduleNode, node);
-
-      //   const module = {
-      //     filepath,
-      //     isEntryFile: false,
-      //     dependencies: [],
-      //   };
-      //   const dependency = {
-      //     module,
-      //     exports: [],
-      //   };
-      //   moduleNode.dependencies.push(dependency);
-
-      //   console.log({ filepath });
-      //   // Intensionally throw when file doesn't exist
-      //   const content = fs.readFileSync(filepath, "utf8");
-      //   const nextModuleAst = espree.parse(content, {
-      //     ecmaVersion: 12,
-      //     sourceType: "module",
-      //   });
-      //   createGraph(nextModuleAst, dependency.module, dependency.exports);
     } else if (node.type === "ImportDeclaration") {
       const filepath = getFilepathFromSourceASTNode(moduleNode, node);
       let exports = [];
@@ -147,30 +61,38 @@ function createGraph(ast, moduleNode, exportName) {
         }
       });
 
-      const module = {
-        filepath,
-        isEntryFile: false,
-        dependencies: [],
-      };
-      const dependency = {
-        module,
-        exports,
-      };
-
+      const { nextModuleAst, dependency } = createDependency(filepath, exports);
       moduleNode.dependencies.push(dependency);
-
-      console.log({ filepath });
-
-      // Intensionally throw when file doesn't exist
-      const content = fs.readFileSync(filepath, "utf8");
-      const nextModuleAst = espree.parse(content, {
-        ecmaVersion: 12,
-        sourceType: "module",
-      });
       createGraph(nextModuleAst, dependency.module, dependency.exports);
     }
   });
   return moduleNode;
+}
+
+function createDependency(filepath, exports, isEntryFile = false) {
+  const module = {
+    filepath,
+    isEntryFile,
+    dependencies: [],
+  };
+  const dependency = {
+    module,
+    exports,
+  };
+
+  console.log({ filepath });
+
+  // Intensionally throw when file doesn't exist
+  const content = fs.readFileSync(filepath, "utf8");
+  const nextModuleAst = espree.parse(content, {
+    ecmaVersion: 12,
+    sourceType: "module",
+  });
+
+  return {
+    nextModuleAst,
+    dependency,
+  };
 }
 
 function getPathInNodeModule(parentFilepath, packageName) {
@@ -263,9 +185,7 @@ function getFilepathOfDirectoryOrFile(parentFilepath, currentFilename) {
 function getFilepathFromSourceASTNode(parentModuleNode, node) {
   let filename = node.source.value;
 
-  if (path.isAbsolute(filename)) {
-    return filename;
-  } else {
+  if (!path.isAbsolute(filename)) {
     // Check if node module, file or directory
     if (isFileOrDirectory(filename)) {
       return getFilepathOfDirectoryOrFile(parentModuleNode.filepath, filename);
@@ -277,12 +197,16 @@ function getFilepathFromSourceASTNode(parentModuleNode, node) {
         // Otherwise file doesn't exist
         throw "File not found!";
       }
+
+      return filepath;
     }
   }
+
+  return filename;
 }
 
 const singleEntrypoint =
-  "/home/jiawei/Documents/rk-webpack-clone/assignments/01/fixtures/03/code/main.js";
+  "/home/jiawei/Documents/rk-webpack-clone/assignments/01/fixtures/02/code/main.js";
 
 // a dependency graph will be returned for every filepath
 // const multipleEntrypoints = { index: "./test/index.js" };
