@@ -61,36 +61,52 @@ function createGraph(ast, moduleNode, exportName) {
 
       const { nextModuleAst, dependency } = createDependency(filepath, exports);
       moduleNode.dependencies.push(dependency);
-      createGraph(nextModuleAst, dependency.module, dependency.exports);
+
+      if (nextModuleAst) {
+        createGraph(nextModuleAst, dependency.module, dependency.exports);
+      }
     }
   });
   return moduleNode;
 }
 
+const DEPENDENCY_MAP = new Map();
+
 function createDependency(filepath, exports, isEntryFile = false) {
-  const module = {
-    filepath,
-    isEntryFile,
-    dependencies: [],
-  };
-  const dependency = {
-    module,
-    exports,
-  };
+  // If filepath exist, it would return the same dependency reference
+  const existingDependency = DEPENDENCY_MAP.get(filepath);
+  if (existingDependency) {
+    return {
+      nextModuleAst: null,
+      dependency: existingDependency,
+    };
+  } else {
+    const module = {
+      filepath,
+      isEntryFile,
+      dependencies: [],
+    };
+    const dependency = {
+      module,
+      exports,
+    };
 
-  console.log({ filepath });
+    DEPENDENCY_MAP.set(filepath, dependency);
 
-  // Intensionally throw when file doesn't exist
-  const content = fs.readFileSync(filepath, "utf8");
-  const nextModuleAst = espree.parse(content, {
-    ecmaVersion: 12,
-    sourceType: "module",
-  });
+    console.log({ filepath });
 
-  return {
-    nextModuleAst,
-    dependency,
-  };
+    // Intensionally throw when file doesn't exist
+    const content = fs.readFileSync(filepath, "utf8");
+    const nextModuleAst = espree.parse(content, {
+      ecmaVersion: 12,
+      sourceType: "module",
+    });
+
+    return {
+      nextModuleAst,
+      dependency,
+    };
+  }
 }
 
 function getPathInNodeModule(parentFilepath, packageName) {
@@ -204,7 +220,7 @@ function getFilepathFromSourceASTNode(parentModuleNode, node) {
 }
 
 const singleEntrypoint =
-  "/home/jiawei/Documents/rk-webpack-clone/assignments/01/fixtures/02/code/main.js";
+  "/home/jiawei/Documents/rk-webpack-clone/assignments/01/fixtures/04/code/main.js";
 
 // a dependency graph will be returned for every filepath
 // const multipleEntrypoints = { index: "./test/index.js" };
