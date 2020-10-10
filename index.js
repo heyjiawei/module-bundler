@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const espree = require("espree");
+const acorn = require("acorn");
 
 function createModule(entryPoint) {
   // Assume single entryPoint and entryPoint is a file
@@ -120,7 +120,7 @@ function createDependency(
 
     if (fs.existsSync(filepath)) {
       const content = fs.readFileSync(filepath, "utf8");
-      const nextModuleAst = espree.parse(content, {
+      const nextModuleAst = acorn.parse(content, {
         ecmaVersion: 12,
         sourceType: "module",
       });
@@ -247,7 +247,8 @@ function getFilepathFromSourceASTNode(parentModuleNode, node) {
   return filename;
 }
 
-const singleEntrypoint = "";
+const singleEntrypoint =
+  "/home/jiawei/Documents/rk-webpack-clone/assignments/01/fixtures/03/code/main.js";
 
 // a dependency graph will be returned for every filepath
 // const multipleEntrypoints = { index: "./test/index.js" };

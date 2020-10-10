@@ -8,7 +8,8 @@
   },
   "author": "",
   "license": "ISC",
-  "devDependencies": {
-    "espree": "^7.3.0"
+  "devDependencies": {},
+  "dependencies": {
+    "acorn": "^8.0.4"
   }
 }
