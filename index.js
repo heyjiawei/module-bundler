@@ -5,14 +5,12 @@ const espree = require("espree");
 function createModule(entryPoint) {
   // Assume single entryPoint and entryPoint is a file
   // Read file content as string
-  const { nextModuleAst: ast, dependency } = createDependency(
-    entryPoint,
-    [],
-    true
-  );
+  const { nextModuleAst, dependency } = createDependency(entryPoint, [], {
+    isEntryFile: true,
+  });
 
   const dependencyGraph = createGraph(
-    ast,
+    nextModuleAst,
     dependency.module,
     dependency.exports
   );
@@ -25,7 +23,14 @@ function createGraph(ast, moduleNode, exportName) {
       const filepath = getFilepathFromSourceASTNode(moduleNode, node);
       let exports = ["*"];
 
-      const { nextModuleAst, dependency } = createDependency(filepath, exports);
+      const { nextModuleAst, dependency } = createDependency(
+        filepath,
+        exports,
+        {
+          parentModuleNode: moduleNode,
+          currentNode: node,
+        }
+      );
       moduleNode.dependencies.push(dependency);
       createGraph(nextModuleAst, dependency.module, dependency.exports);
     } else if (node.type === "ExportNamedDeclaration" && node.source) {
@@ -37,7 +42,14 @@ function createGraph(ast, moduleNode, exportName) {
         }
       });
 
-      const { nextModuleAst, dependency } = createDependency(filepath, exports);
+      const { nextModuleAst, dependency } = createDependency(
+        filepath,
+        exports,
+        {
+          parentModuleNode: moduleNode,
+          currentNode: node,
+        }
+      );
       moduleNode.dependencies.push(dependency);
       createGraph(nextModuleAst, dependency.module, dependency.exports);
     } else if (node.type === "ImportDeclaration") {
@@ -59,7 +71,14 @@ function createGraph(ast, moduleNode, exportName) {
         }
       });
 
-      const { nextModuleAst, dependency } = createDependency(filepath, exports);
+      const { nextModuleAst, dependency } = createDependency(
+        filepath,
+        exports,
+        {
+          parentModuleNode: moduleNode,
+          currentNode: node,
+        }
+      );
       moduleNode.dependencies.push(dependency);
 
       if (nextModuleAst) {
@@ -72,7 +91,11 @@ function createGraph(ast, moduleNode, exportName) {
 
 const DEPENDENCY_MAP = new Map();
 
-function createDependency(filepath, exports, isEntryFile = false) {
+function createDependency(
+  filepath,
+  exports,
+  { isEntryFile = false, parentModuleNode, currentNode }
+) {
   // If filepath exist, it would return the same dependency reference
   const existingDependency = DEPENDENCY_MAP.get(filepath);
   if (existingDependency) {
@@ -95,17 +118,25 @@ function createDependency(filepath, exports, isEntryFile = false) {
 
     console.log({ filepath });
 
-    // Intensionally throw when file doesn't exist
-    const content = fs.readFileSync(filepath, "utf8");
-    const nextModuleAst = espree.parse(content, {
-      ecmaVersion: 12,
-      sourceType: "module",
-    });
+    if (fs.existsSync(filepath)) {
+      const content = fs.readFileSync(filepath, "utf8");
+      const nextModuleAst = espree.parse(content, {
+        ecmaVersion: 12,
+        sourceType: "module",
+      });
 
-    return {
-      nextModuleAst,
-      dependency,
-    };
+      return {
+        nextModuleAst,
+        dependency,
+      };
+    } else {
+      // Intensionally throw when file doesn't exist
+      // TODO: throw here
+      // Require source name(?) and relative parent filepath
+      throw new Error(
+        `Unable to resolve "${currentNode.source.value}" from "${parentModuleNode.filepath}"`
+      );
+    }
   }
 }
 
@@ -157,18 +188,15 @@ function getFilepathOfDirectoryOrFile(parentFilepath, currentFilename) {
     // If folder contains an index.js, it's a directory
     return path.join(path.dirname(parentFilepath), currentFilename, "index.js");
   } else {
-    const containsPkgManifestJson = fs.existsSync(
-      path.join(path.dirname(parentFilepath), currentFilename, "package.json")
+    const pkgManifestFilepath = path.join(
+      path.dirname(parentFilepath),
+      currentFilename,
+      "package.json"
     );
 
-    if (containsPkgManifestJson) {
+    if (fs.existsSync(pkgManifestFilepath)) {
       // If folder contains a package.json and
       // has a file as declared in package.json main, it's a directory
-      const pkgManifestFilepath = path.join(
-        path.dirname(parentFilepath),
-        currentFilename,
-        "package.json"
-      );
       // We want to intensionally throw if there is an error parsing package.json
       const pkgManifestJson = JSON.parse(
         fs.readFileSync(pkgManifestFilepath, "utf8")
@@ -209,7 +237,7 @@ function getFilepathFromSourceASTNode(parentModuleNode, node) {
 
       if (filepath.length === 0) {
         // Otherwise file doesn't exist
-        throw "File not found!";
+        throw new Error("File not found in all node_modules");
       }
 
       return filepath;
@@ -219,8 +247,7 @@ function getFilepathFromSourceASTNode(parentModuleNode, node) {
   return filename;
 }
 
-const singleEntrypoint =
-  "/home/jiawei/Documents/rk-webpack-clone/assignments/01/fixtures/04/code/main.js";
+const singleEntrypoint = "";
 
 // a dependency graph will be returned for every filepath
 // const multipleEntrypoints = { index: "./test/index.js" };
