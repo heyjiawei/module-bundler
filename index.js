@@ -32,73 +32,103 @@ function createGraph(ast, moduleNode, exportName) {
     //   //   exportName.push(node.declaration.name);
     //   // }
     //   // exportName.push("default");
-    // } else if (node.type === "ExportNamedDeclaration") {
-    //   if (node.declaration?.type === "VariableDeclaration") {
-    //     // If exported is a variable
-    //     node.declaration.declarations.forEach((declaration) => {
-    //       if (declaration.type === "VariableDeclarator") {
-    //         exportName.push(declaration.id.name);
-    //       }
-    //     });
-    //   } else if (node.specifiers.length > 0) {
-    //     // If exported is an ExportSpecifier
-    //     node.specifiers.forEach((specifier) => {
-    //       if (specifier.type === "ExportSpecifier") {
-    //         exportName.push(specifier.exported.name);
-    //       }
-    //     });
-    //     // TODO: Link module to import path
-    //     const filepath = getFilepathFromSourceASTNode(moduleNode, node);
-
-    //     const module = {
-    //       filepath,
-    //       isEntryFile: false,
-    //       dependencies: [],
-    //     };
-    //     const dependency = {
-    //       module,
-    //       exports: [],
-    //     };
-    //     moduleNode.dependencies.push(dependency);
-
-    //     console.log({ filepath });
-    //     // Intensionally throw when file doesn't exist
-    //     const content = fs.readFileSync(filepath, "utf8");
-    //     const nextModuleAst = espree.parse(content, {
-    //       ecmaVersion: 12,
-    //       sourceType: "module",
-    //     });
-    //     createGraph(nextModuleAst, dependency.module, dependency.exports);
-    //   }
-    // } else if (node.type === "ExportAllDeclaration") {
-    //   // Handle export * as g from './g';
-    //   exportName.push(node.exported.name);
-
-    //   // TODO: Link module to import path
-    //   const filepath = getFilepathFromSourceASTNode(moduleNode, node);
-
-    //   const module = {
-    //     filepath,
-    //     isEntryFile: false,
-    //     dependencies: [],
-    //   };
-    //   const dependency = {
-    //     module,
-    //     exports: [],
-    //   };
-    //   moduleNode.dependencies.push(dependency);
-
-    //   console.log({ filepath });
-    //   // Intensionally throw when file doesn't exist
-    //   const content = fs.readFileSync(filepath, "utf8");
-    //   const nextModuleAst = espree.parse(content, {
-    //     ecmaVersion: 12,
-    //     sourceType: "module",
-    //   });
-    //   createGraph(nextModuleAst, dependency.module, dependency.exports);
     // } else
 
-    if (node.type === "ImportDeclaration") {
+    if (node.type === "ExportNamedDeclaration" && node.source) {
+      const filepath = getFilepathFromSourceASTNode(moduleNode, node);
+      let exports = [];
+      node.specifiers.forEach((specifier) => {
+        if (specifier.type === "ExportSpecifier") {
+          exports.push(specifier.local.name);
+        }
+      });
+
+      const module = {
+        filepath,
+        isEntryFile: false,
+        dependencies: [],
+      };
+      const dependency = {
+        module,
+        exports,
+      };
+
+      moduleNode.dependencies.push(dependency);
+
+      console.log({ filepath });
+
+      // Intensionally throw when file doesn't exist
+      const content = fs.readFileSync(filepath, "utf8");
+      const nextModuleAst = espree.parse(content, {
+        ecmaVersion: 12,
+        sourceType: "module",
+      });
+      createGraph(nextModuleAst, dependency.module, dependency.exports);
+
+      //   if (node.declaration?.type === "VariableDeclaration") {
+      //     // If exported is a variable
+      //     node.declaration.declarations.forEach((declaration) => {
+      //       if (declaration.type === "VariableDeclarator") {
+      //         exportName.push(declaration.id.name);
+      //       }
+      //     });
+      //   } else if (node.specifiers.length > 0) {
+      //     // If exported is an ExportSpecifier
+      //     node.specifiers.forEach((specifier) => {
+      //       if (specifier.type === "ExportSpecifier") {
+      //         exportName.push(specifier.exported.name);
+      //       }
+      //     });
+      //     // TODO: Link module to import path
+      //     const filepath = getFilepathFromSourceASTNode(moduleNode, node);
+
+      //     const module = {
+      //       filepath,
+      //       isEntryFile: false,
+      //       dependencies: [],
+      //     };
+      //     const dependency = {
+      //       module,
+      //       exports: [],
+      //     };
+      //     moduleNode.dependencies.push(dependency);
+
+      //     console.log({ filepath });
+      //     // Intensionally throw when file doesn't exist
+      //     const content = fs.readFileSync(filepath, "utf8");
+      //     const nextModuleAst = espree.parse(content, {
+      //       ecmaVersion: 12,
+      //       sourceType: "module",
+      //     });
+      //     createGraph(nextModuleAst, dependency.module, dependency.exports);
+      //   }
+      // } else if (node.type === "ExportAllDeclaration") {
+      //   // Handle export * as g from './g';
+      //   exportName.push(node.exported.name);
+
+      //   // TODO: Link module to import path
+      //   const filepath = getFilepathFromSourceASTNode(moduleNode, node);
+
+      //   const module = {
+      //     filepath,
+      //     isEntryFile: false,
+      //     dependencies: [],
+      //   };
+      //   const dependency = {
+      //     module,
+      //     exports: [],
+      //   };
+      //   moduleNode.dependencies.push(dependency);
+
+      //   console.log({ filepath });
+      //   // Intensionally throw when file doesn't exist
+      //   const content = fs.readFileSync(filepath, "utf8");
+      //   const nextModuleAst = espree.parse(content, {
+      //     ecmaVersion: 12,
+      //     sourceType: "module",
+      //   });
+      //   createGraph(nextModuleAst, dependency.module, dependency.exports);
+    } else if (node.type === "ImportDeclaration") {
       const filepath = getFilepathFromSourceASTNode(moduleNode, node);
       let exports = [];
       node.specifiers.forEach((specifier) => {
