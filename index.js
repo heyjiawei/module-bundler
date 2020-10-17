@@ -1,7 +1,8 @@
 const fs = require("fs");
+const resolve = require("resolve");
 const acorn = require("acorn");
 const walk = require("acorn-walk");
-const resolve = require("resolve");
+const escodegen = require("escodegen");
 
 const {
   resolver: buildDependencyGraph,
@@ -11,7 +12,7 @@ const {
 function bundle(entryFile, outputFolder) {
   // Create dependency graph and get dependency map
   buildDependencyGraph(entryFile);
-  console.log(DEPENDENCY_MAP.keys());
+
   // Create moduleMap
   let moduleMap = "{";
   for (filepath of DEPENDENCY_MAP.keys()) {
@@ -25,13 +26,63 @@ function bundle(entryFile, outputFolder) {
 }
 
 function transform(filepath) {
-  return "const hello;";
-  // const code = fs.readFileSync(filepath, "utf8");
-  // walk.simple(acorn.parse(code), {
+  const code = fs.readFileSync(filepath, "utf8");
+  const ast = acorn.parse(code, {
+    ecmaVersion: 12,
+    sourceType: "module",
+  });
 
-  // });
+  walk.simple(ast, {
+    ImportDeclaration(node) {
+      walk.simple(node, {
+        ImportDefaultSpecifier(defaultSpecifierNode) {
+          transformImportDefaultSpecifierToVariableDeclaration(
+            node,
+            defaultSpecifierNode
+          );
+        },
+      });
+    },
+  });
+
+  return escodegen.generate(ast);
 }
 
+function transformImportDefaultSpecifierToVariableDeclaration(
+  parentNode,
+  specifierNode
+) {
+  const pathname = resolve.sync(parentNode.source.value, {
+    basedir:
+      "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code/",
+  });
+
+  parentNode.type = "VariableDeclaration";
+  parentNode.kind = "const";
+  parentNode.declarations = [
+    {
+      type: "VariableDeclarator",
+      id: {
+        type: "Identifier",
+        name: specifierNode.local.name,
+      },
+      init: {
+        type: "CallExpression",
+        callee: {
+          type: "Identifier",
+          name: "_require",
+        },
+        arguments: [
+          {
+            type: "Literal",
+            value: pathname,
+            raw: `"${pathname}"`,
+          },
+        ],
+      },
+    },
+  ];
+}
 const singleEntrypoint =
   "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code/main.js";
 

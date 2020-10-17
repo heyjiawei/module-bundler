@@ -12,6 +12,7 @@
   "dependencies": {
     "acorn": "^8.0.4",
     "acorn-walk": "^8.0.0",
+    "escodegen": "^2.0.0",
     "resolve": "^1.17.0"
   }
 }
