@@ -1,18 +1,42 @@
-const { resolver, DEPENDENCY_MAP } = require("./resolver");
+const fs = require("fs");
+const acorn = require("acorn");
+const walk = require("acorn-walk");
+const resolve = require("resolve");
+
+const {
+  resolver: buildDependencyGraph,
+  DEPENDENCY_MAP,
+} = require("./resolver");
 
 function bundle(entryFile, outputFolder) {
-  resolver(entryFile);
-
-  for (filepaths of DEPENDENCY_MAP.keys()) {
-    console.log(filepaths);
+  // Create dependency graph and get dependency map
+  buildDependencyGraph(entryFile);
+  console.log(DEPENDENCY_MAP.keys());
+  // Create moduleMap
+  let moduleMap = "{";
+  for (filepath of DEPENDENCY_MAP.keys()) {
+    moduleMap += `"${filepath}": (_exports, _require) => { ${transform(
+      filepath
+    )} },`;
   }
+  moduleMap += "}";
+
+  fs.createWriteStream(outputFolder).write(`const moduleMap = ${moduleMap}`);
+}
+
+function transform(filepath) {
+  return "const hello;";
+  // const code = fs.readFileSync(filepath, "utf8");
+  // walk.simple(acorn.parse(code), {
+
+  // });
 }
 
 const singleEntrypoint =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/01/code/main.js";
+  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code/main.js";
 
-bundle(singleEntrypoint);
-// console.log(JSON.stringify(resolver(singleEntrypoint), " ", 2));
+bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/bundle.js");
+// console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
 /**
  output a file like that executes itself. File looks sth like this:
