@@ -1,7 +1,9 @@
 const fs = require("fs");
-const acorn = require("acorn");
-const walk = require("acorn-walk");
 const resolve = require("resolve");
+const { parse } = require("@babel/parser");
+const traverse = require("@babel/traverse").default;
+const generate = require("@babel/generator").default;
+const t = require("@babel/types");
 
 const {
   resolver: buildDependencyGraph,
@@ -11,7 +13,7 @@ const {
 function bundle(entryFile, outputFolder) {
   // Create dependency graph and get dependency map
   buildDependencyGraph(entryFile);
-  console.log(DEPENDENCY_MAP.keys());
+
   // Create moduleMap
   let moduleMap = "{";
   for (filepath of DEPENDENCY_MAP.keys()) {
@@ -25,13 +27,47 @@ function bundle(entryFile, outputFolder) {
 }
 
 function transform(filepath) {
-  return "const hello;";
-  // const code = fs.readFileSync(filepath, "utf8");
-  // walk.simple(acorn.parse(code), {
+  const code = fs.readFileSync(filepath, "utf8");
+  const ast = parse(code, {
+    sourceType: "module",
+    sourceFilename: filepath,
+  });
 
-  // });
+  traverse(ast, {
+    ImportDeclaration(path) {
+      const source = path.node.source.value;
+      const filename = resolve.sync(source, {
+        basedir: BASE_DIR,
+      });
+      path.get("specifiers").forEach((specifier) => {
+        if (t.isImportDefaultSpecifier(specifier)) {
+          const name = specifier.node.local.name;
+          path.replaceWith(
+            t.variableDeclaration("const", [
+              t.variableDeclarator(
+                t.identifier(name),
+                t.callExpression(t.identifier("_required"), [
+                  t.stringLiteral(filename),
+                ])
+              ),
+            ])
+          );
+        }
+      });
+    },
+  });
+
+  // TODO: return sourceMap
+  const { code: transformedCode, map } = generate(
+    ast,
+    { sourceMap: true },
+    code
+  );
+  return transformedCode;
 }
 
+const BASE_DIR =
+  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code";
 const singleEntrypoint =
   "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code/main.js";
 
