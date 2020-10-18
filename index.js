@@ -39,21 +39,43 @@ function transform(filepath) {
       const filename = resolve.sync(source, {
         basedir: BASE_DIR,
       });
+      const variables = [];
+      const objectProperties = [];
+
       path.get("specifiers").forEach((specifier) => {
         if (t.isImportDefaultSpecifier(specifier)) {
           const name = specifier.node.local.name;
-          path.replaceWith(
-            t.variableDeclaration("const", [
-              t.variableDeclarator(
-                t.identifier(name),
-                t.callExpression(t.identifier("_required"), [
-                  t.stringLiteral(filename),
-                ])
-              ),
-            ])
+          variables.push(
+            t.variableDeclarator(
+              t.identifier(name),
+              t.callExpression(t.identifier("_require"), [
+                t.stringLiteral(filename),
+              ])
+            )
+          );
+        } else if (t.isImportSpecifier(specifier)) {
+          const imported = specifier.node.imported.name;
+          const local = specifier.node.local.name;
+          objectProperties.push(
+            t.objectProperty(
+              t.identifier(imported),
+              t.identifier(local),
+              undefined,
+              true
+            )
+          );
+          variables.push(
+            t.variableDeclarator(
+              t.objectPattern(objectProperties),
+              t.callExpression(t.identifier("_require"), [
+                t.stringLiteral(filename),
+              ])
+            )
           );
         }
       });
+
+      path.replaceWith(t.variableDeclaration("const", variables));
     },
   });
 
