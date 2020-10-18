@@ -43,17 +43,7 @@ function transform(filepath) {
       const objectProperties = [];
 
       path.get("specifiers").forEach((specifier) => {
-        if (t.isImportDefaultSpecifier(specifier)) {
-          const name = specifier.node.local.name;
-          variables.push(
-            t.variableDeclarator(
-              t.identifier(name),
-              t.callExpression(t.identifier("_require"), [
-                t.stringLiteral(filename),
-              ])
-            )
-          );
-        } else if (t.isImportSpecifier(specifier)) {
+        if (t.isImportSpecifier(specifier)) {
           const imported = specifier.node.imported.name;
           const local = specifier.node.local.name;
           objectProperties.push(
@@ -72,6 +62,19 @@ function transform(filepath) {
               ])
             )
           );
+        } else {
+          const name = specifier.node.local.name;
+          const init = t.isImportDefaultSpecifier(specifier)
+            ? t.memberExpression(
+                t.callExpression(t.identifier("_require"), [
+                  t.stringLiteral(filename),
+                ]),
+                t.identifier("default")
+              )
+            : t.callExpression(t.identifier("_require"), [
+                t.stringLiteral(filename),
+              ]);
+          variables.push(t.variableDeclarator(t.identifier(name), init));
         }
       });
 
