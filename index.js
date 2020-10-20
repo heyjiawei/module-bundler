@@ -82,7 +82,18 @@ function transform(filepath) {
       path.replaceWith(t.variableDeclaration("const", variables));
     },
     ExportDefaultDeclaration(path) {
-      // TODO:
+      if (path.has("declaration")) {
+        // TODO:
+        const buildRequire = template(`
+            _exports.default = %%statement%%
+          `);
+        const ast = buildRequire({
+          statement: path.node.declaration,
+        });
+        path.replaceWith(ast);
+      } else {
+        console.error("Unhandled default export declaration");
+      }
     },
     ExportNamedDeclaration(path) {
       if (path.has("declaration")) {
@@ -105,7 +116,6 @@ function transform(filepath) {
             const value = declarator.init;
             objectProperties.push(t.objectProperty(t.identifier(key), value));
           });
-          // const objectExpression = ;
           const buildRequire = template(`
             _exports = Object.assign(_exports, %%object%%)
           `);
