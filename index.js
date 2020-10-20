@@ -4,6 +4,7 @@ const { parse } = require("@babel/parser");
 const traverse = require("@babel/traverse").default;
 const generate = require("@babel/generator").default;
 const t = require("@babel/types");
+const template = require("@babel/template").default;
 
 const {
   resolver: buildDependencyGraph,
@@ -79,6 +80,47 @@ function transform(filepath) {
       });
 
       path.replaceWith(t.variableDeclaration("const", variables));
+    },
+    ExportDefaultDeclaration(path) {
+      // TODO:
+    },
+    ExportNamedDeclaration(path) {
+      if (path.has("declaration")) {
+        if (t.isFunctionDeclaration(path.node.declaration)) {
+          const name = path.node.declaration.id.name;
+          const functionNode = path.node.declaration;
+          path.replaceWith(functionNode);
+          path.insertAfter(
+            t.assignmentExpression(
+              "=",
+              t.memberExpression(t.identifier("_exports"), t.identifier(name)),
+              t.identifier(name)
+            )
+          );
+        } else if (t.isVariableDeclaration(path.node.declaration)) {
+          const objectProperties = [];
+          const { declarations } = path.node.declaration;
+          declarations.forEach((declarator) => {
+            const key = declarator.id.name;
+            const value = declarator.init;
+            objectProperties.push(t.objectProperty(t.identifier(key), value));
+          });
+          // const objectExpression = ;
+          const buildRequire = template(`
+            _exports = Object.assign(_exports, %%object%%)
+          `);
+
+          const ast = buildRequire({
+            object: t.objectExpression(objectProperties),
+          });
+
+          path.replaceWith(ast);
+        } else {
+          console.error("Unhandled named export declaration");
+        }
+      } else if (path.has("specifiers")) {
+        // TODO: Re-exports
+      }
     },
   });
 
