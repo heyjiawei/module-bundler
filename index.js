@@ -24,7 +24,26 @@ function bundle(entryFile, outputFolder) {
   }
   moduleMap += "}";
 
-  fs.createWriteStream(outputFolder).write(`const moduleMap = ${moduleMap}`);
+  const entryFilename = resolve.sync(entryFile, {
+    basedir: BASE_DIR,
+  });
+
+  fs.createWriteStream(outputFolder).write(`
+  ((entryFile) => {
+    const moduleMap = ${moduleMap};
+    const exportsMap = {};
+
+    function getModule(filepath) {
+      if (!exportsMap[filepath]) {
+        exportsMap[filepath] = {};
+        moduleMap[filepath](exportsMap[filepath], getModule);
+      }
+      return exportsMap[filepath];
+    }
+
+    return getModule(entryFile);
+  })("${entryFilename}")
+  `);
 }
 
 function transform(filepath) {
@@ -83,7 +102,6 @@ function transform(filepath) {
     },
     ExportDefaultDeclaration(path) {
       if (path.has("declaration")) {
-        // TODO:
         const buildRequire = template(`
             _exports.default = %%statement%%
           `);
