@@ -1,3 +1,4 @@
+const path = require("path");
 const fs = require("fs");
 const resolve = require("resolve");
 const { parse } = require("@babel/parser");
@@ -11,7 +12,11 @@ const {
   DEPENDENCY_MAP,
 } = require("./resolver");
 
+let BASE_DIR;
+
 function bundle(entryFile, outputFolder) {
+  BASE_DIR = path.dirname(entryFile);
+
   // Create dependency graph and get dependency map
   buildDependencyGraph(entryFile);
 
@@ -59,6 +64,18 @@ function transform(filepath) {
       const filename = resolve.sync(source, {
         basedir: BASE_DIR,
       });
+
+      if (path.get("specifiers").length === 0) {
+        const pathname = resolve.sync(path.get("source").node.value, {
+          basedir: BASE_DIR,
+        });
+        const ast = template(`
+          _require('${pathname}')
+        `)();
+        path.replaceWith(ast);
+        return;
+      }
+
       const variables = [];
       const objectProperties = [];
 
@@ -98,7 +115,7 @@ function transform(filepath) {
         }
       });
 
-      path.replaceWith(t.variableDeclaration("const", variables));
+      path.replaceWith(t.variableDeclaration("let", variables));
     },
     ExportDefaultDeclaration(path) {
       if (path.has("declaration")) {
@@ -106,7 +123,7 @@ function transform(filepath) {
             _exports.default = %%statement%%
           `);
         const ast = buildRequire({
-          statement: path.node.declaration,
+          statement: t.toExpression(path.node.declaration),
         });
         path.replaceWith(ast);
       } else {
@@ -147,8 +164,67 @@ function transform(filepath) {
           console.error("Unhandled named export declaration");
         }
       } else if (path.has("specifiers")) {
-        // TODO: Re-exports
+        // TODO: Re-exports and normal exports
+        const isReExport = path.has("source");
+        path.get("specifiers").forEach((specifier) => {
+          const exportedName = specifier.get("exported").node.name;
+          const localName =
+            (specifier.has("local") && specifier.get("local").node.name) ||
+            exportedName;
+          if (t.isExportNamespaceSpecifier(specifier)) {
+            // handles export * as b from "./b";
+            if (isReExport) {
+              const pathname = resolve.sync(path.get("source").node.value, {
+                basedir: BASE_DIR,
+              });
+              const buildRequire = template(`
+                _exports = Object.assign(_exports, {
+                  %%exportedName%%: _require('${pathname}')
+                })
+              `);
+              const ast = buildRequire({
+                exportedName,
+              });
+              path.replaceWith(ast);
+            }
+          } else if (t.isExportSpecifier(specifier)) {
+            // handles
+            // export {d} from './d';
+            // export {d as e} from './d';
+            // export {
+            //   hey
+            // }
+            if (isReExport) {
+              const pathname = resolve.sync(path.get("source").node.value, {
+                basedir: BASE_DIR,
+              });
+              const buildRequire = template(`
+                _exports = Object.assign(_exports, {
+                  %%exportedName%%: _require('${pathname}').%%localName%%
+                })
+              `);
+              const ast = buildRequire({
+                exportedName,
+                localName,
+              });
+              path.replaceWith(ast);
+            }
+          } else {
+            console.error("Unhandled ExportNamedDeclaration");
+          }
+        });
       }
+    },
+    ExportAllDeclaration(path) {
+      const pathname = resolve.sync(path.get("source").node.value, {
+        basedir: BASE_DIR,
+      });
+      const ast = template(`
+        _exports = Object.assign(_exports, {
+          ..._require('${pathname}')
+        })
+      `)();
+      path.replaceWith(ast);
     },
   });
 
@@ -161,12 +237,13 @@ function transform(filepath) {
   return transformedCode;
 }
 
-const BASE_DIR =
-  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code";
+// const BASE_DIR =
+//   "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code";
 const singleEntrypoint =
-  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code/main.js";
+  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/03/code/main.js";
 
 bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/bundle.js");
+
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
 /**
@@ -180,7 +257,7 @@ bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/bundle.js");
  ((entryFile) => {
   const exportsMap = {};
   const moduleMap = { 
-    0: (exportToPopulate, getModule) => {
+    0: (exportToPopulate, getModule, filepath) => {
       const a = getModule('a.js').default;
       // copied contents of entry file
       exportsToPopulate.default = a;
@@ -191,12 +268,15 @@ bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/bundle.js");
   };
   
   function getModule(filepath) {
-    if (exportsMap[filepath]) return exportsMap[filepath];
-    exportsMap[filepath] = {};
-
-    return moduleMap[filepath](exportsMap[filepath], getModule)
-  }
+      if (!exportsMap[filepath]) {
+        exportsMap[filepath] = {};
+        moduleMap[filepath](exportsMap[filepath], getModule);
+      }
+      return exportsMap[filepath];
+    }
 
   return getModule(entryFile);
  })(0)
  */
+
+module.exports = bundle;
