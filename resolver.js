@@ -10,14 +10,19 @@ const IMPORT_NAMESPACE_SPECIFIER = "ImportNamespaceSpecifier";
 const IMPORT_SPECIFIER = "ImportSpecifier";
 const IMPORT_DEFAULT_SPECIFIER = "ImportDefaultSpecifier";
 
-const DEPENDENCY_MAP = new Map();
+let DEPENDENCY_MAP = new Map();
 
-function createModule(entryPoint) {
+function createModule(entryPoint, dependencyMap) {
   // Assume single entryPoint and entryPoint is a file
   // Read file content as string
+  if (dependencyMap) {
+    DEPENDENCY_MAP = dependencyMap;
+  }
+
   const { nextModuleAst, dependency } = createDependency(entryPoint, [], true);
 
   const dependencyGraph = createGraph(nextModuleAst, dependency.module);
+
   return dependencyGraph;
 }
 

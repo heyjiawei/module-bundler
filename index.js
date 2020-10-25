@@ -7,22 +7,24 @@ const generate = require("@babel/generator").default;
 const t = require("@babel/types");
 const template = require("@babel/template").default;
 
-const {
-  resolver: buildDependencyGraph,
-  DEPENDENCY_MAP,
-} = require("./resolver");
+const { resolver: buildDependencyGraph } = require("./resolver");
 
 let BASE_DIR;
 
 function bundle(entryFile, outputFolder) {
   BASE_DIR = path.dirname(entryFile);
 
-  // Create dependency graph and get dependency map
-  buildDependencyGraph(entryFile);
+  // Create output folder if it doesn't exist
+  if (!fs.existsSync(outputFolder)) {
+    fs.mkdirSync(outputFolder);
+  }
+  const outputFilepath = path.join(outputFolder, "index.js");
+  const dependencyMap = new Map();
+  buildDependencyGraph(entryFile, dependencyMap);
 
   // Create moduleMap
   let moduleMap = "{";
-  for (filepath of DEPENDENCY_MAP.keys()) {
+  for (filepath of dependencyMap.keys()) {
     moduleMap += `"${filepath}": (_exports, _require) => { ${transform(
       filepath
     )} },`;
@@ -33,7 +35,9 @@ function bundle(entryFile, outputFolder) {
     basedir: BASE_DIR,
   });
 
-  fs.createWriteStream(outputFolder).write(`
+  fs.writeFileSync(
+    outputFilepath,
+    `
   ((entryFile) => {
     const moduleMap = ${moduleMap};
     const exportsMap = {};
@@ -48,7 +52,9 @@ function bundle(entryFile, outputFolder) {
 
     return getModule(entryFile);
   })("${entryFilename}")
-  `);
+  `
+  );
+  return outputFilepath;
 }
 
 function transform(filepath) {
@@ -115,7 +121,7 @@ function transform(filepath) {
         }
       });
 
-      path.replaceWith(t.variableDeclaration("let", variables));
+      path.replaceWith(t.variableDeclaration("const", variables));
     },
     ExportDefaultDeclaration(path) {
       if (path.has("declaration")) {
@@ -237,12 +243,12 @@ function transform(filepath) {
   return transformedCode;
 }
 
-// const BASE_DIR =
+// BASE_DIR =
 //   "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code";
-const singleEntrypoint =
-  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/03/code/main.js";
+// const singleEntrypoint =
+//   "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code/main.js";
 
-bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/bundle.js");
+// bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
