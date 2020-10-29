@@ -19,8 +19,7 @@ function bundle(entryFile, outputFolder) {
     fs.mkdirSync(outputFolder);
   }
   const outputFilepath = path.join(outputFolder, "index.js");
-  const dependencyMap = new Map();
-  buildDependencyGraph(entryFile, dependencyMap);
+  const { dependencyMap } = buildDependencyGraph(entryFile);
 
   // Create moduleMap
   let moduleMap = "{";
@@ -54,7 +53,11 @@ function bundle(entryFile, outputFolder) {
   })("${entryFilename}")
   `
   );
-  return outputFilepath;
+
+  return {
+    folder: outputFilepath,
+    main: entryFile,
+  };
 }
 
 function transform(filepath) {
