@@ -4,6 +4,7 @@ const resolve = require("resolve");
 const { parse } = require("@babel/parser");
 const traverse = require("@babel/traverse").default;
 const t = require("@babel/types");
+const { ChunkGraph } = require("webpack");
 
 let basedir;
 let dependencyMap;
@@ -15,14 +16,12 @@ let chunkGraph;
 function buildDependencyGraph(entryPoint) {
   setUp(entryPoint);
 
-  const ast = parse(fs.readFileSync(entryPoint, "utf8"), {
-    sourceType: "module",
-  });
-  build(ast, chunkId);
+  build(parseToAst(entryPoint), chunkId);
 
   return {
     dependencyMap,
     chunkMap,
+    chunkGraph,
   };
 }
 
@@ -31,13 +30,18 @@ function build(ast, currentChunk) {
     ImportDeclaration(path) {
       const sourceFilepath = getAbsoluteFilepath(path.get("source").node.value);
       addToDependencyMap(sourceFilepath);
-      // Do we need to add this to the chunk graph?
+      build(parseToAst(sourceFilepath), currentChunk);
     },
     CallExpression(path) {
       if (path.get("callee") && t.isImport(path.get("callee"))) {
-        const filepath = path.get("arguments")[0].node.value;
+        const filepath = getAbsoluteFilepath(
+          path.get("arguments")[0].node.value
+        );
         addToDependencyMap(filepath);
-        addToChunkMap(currentChunk, getAbsoluteFilepath(filepath));
+        addToChunkMap(currentChunk, filepath);
+
+        const childrenChunkId = chunkMap.get(filepath);
+        build(parseToAst(filepath), childrenChunkId);
       }
     },
   });
@@ -60,18 +64,18 @@ function addToChunkMap(parentChunkId, filepath) {
   }
 
   const currentChunkId = chunkMap.get(filepath);
-  if (!chunkGraph.has(currentChunkId)) {
-    const node = {
-      parentChunkId,
-      childrenChunkId: new Set(),
-    };
-    chunkGraph.set(currentChunkId, node);
+  if (ChunkGraph.has(currentChunkId)) return;
 
-    let parentNode = chunkGraph.get(parentChunkId);
-    while (parentNode && !parentNode.childrenChunkId.has(currentChunkId)) {
-      parentNode.childrenChunkId.add(currentChunkId);
-      parentNode = chunkGraph.get(parentNode.parentChunkId);
-    }
+  const node = {
+    parentChunkId,
+    childrenChunkId: new Set(),
+  };
+  chunkGraph.set(currentChunkId, node);
+
+  let parentNode = chunkGraph.get(parentChunkId);
+  while (parentNode && !parentNode.childrenChunkId.has(currentChunkId)) {
+    parentNode.childrenChunkId.add(currentChunkId);
+    parentNode = chunkGraph.get(parentNode.parentChunkId);
   }
 }
 
@@ -90,10 +94,15 @@ function setUp(entryPoint) {
     parentChunkId: null,
     childrenChunkId: new Set(),
   });
-  chunk++;
+  chunkId++;
 }
 
 // TODO: extract chunkNode to an Factory function
-//
+
+function parseToAst(filepath) {
+  return parse(fs.readFileSync(getAbsoluteFilepath(filepath), "utf8"), {
+    sourceType: "module",
+  });
+}
 
 exports.buildDependencyGraph = buildDependencyGraph;
