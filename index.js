@@ -179,7 +179,20 @@ function transform(filepath) {
       `)();
       path.replaceWith(ast);
     },
-    // TODO: Replace all expressions that match localName with scopePerModule[expressionName].replaceWith
+    FunctionDeclaration(path) {
+      // TODO: Replace all expressions that match localName with scopePerModule[expressionName].replaceWith
+    },
+    ExpressionStatement(path) {
+      // TODO: Replace all expressions that match localName with scopePerModule[expressionName].replaceWith
+      path.traverse({
+        Identifier(path) {
+          // ...
+        },
+      });
+    },
+    VariableDeclaration(path) {
+      // TODO: Replace all expressions that match localName with scopePerModule[expressionName].replaceWith
+    },
   });
 
   // TODO: return sourceMap
