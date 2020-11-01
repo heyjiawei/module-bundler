@@ -333,23 +333,23 @@ function handleImportDeclaration(path) {
           _require('${getAbsolutePath(filepath)}')
         `)();
   } else if (!objectProperties.length) {
-    ast = template(`const ${objectName} = _exports(${filepath})`);
+    ast = template(`const ${objectName} = _exports['${filepath}']`)();
   } else {
     ast = template(
-      `const { ${objectProperties.join(",")} } = _exports(${filepath})`
-    );
+      `const { ${objectProperties.join(",")} } = _exports['${filepath}']`
+    )();
   }
 
   path.replaceWith(ast);
   return;
 }
 
-// BASE_DIR =
-//   "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code";
-// const singleEntrypoint =
-//   "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code/main.js";
+BASE_DIR =
+  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code";
+const singleEntrypoint =
+  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code/main.js";
 
-// bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/output");
+bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
