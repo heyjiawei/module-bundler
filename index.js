@@ -43,7 +43,7 @@ function bundle(entryFile, outputFolder) {
     const exportsMap = {};
 
     function getModule(filepath) {
-      if (!exportsMap[filepath]) {
+      if (exportsMap[filepath] == null) {
         exportsMap[filepath] = {};
         moduleMap[filepath](exportsMap[filepath], getModule);
       }
@@ -66,22 +66,66 @@ function transform(filepath) {
 
   traverse(ast, {
     ImportDeclaration(path) {
-      const source = path.node.source.value;
-      const filename = resolve.sync(source, {
-        basedir: BASE_DIR,
-      });
+      handleImportDeclaration(path);
 
-      if (path.get("specifiers").length === 0) {
-        const pathname = resolve.sync(path.get("source").node.value, {
-          basedir: BASE_DIR,
-        });
-        const ast = template(`
-          _require('${pathname}')
-        `)();
-        path.replaceWith(ast);
-        return;
-      }
+      // // const source = path.get("source").node.value;
+      // const filepath = getAbsolutePath(path.get("source").node.value);
+      // // const filename = resolve.sync(source, {
+      // //   basedir: BASE_DIR,
+      // // });
 
+      // /**
+      //  * import './a'
+      //  */
+      // if (path.get("specifiers").length === 0) {
+      //   // const pathname = resolve.sync(path.get("source").node.value, {
+      //   //   basedir: BASE_DIR,
+      //   // });
+      //   const ast = template(`
+      //     _require('${getAbsolutePath(filepath)}')
+      //   `)();
+      //   path.replaceWith(ast);
+      //   return;
+      // }
+
+      // let objectProperties = [];
+      // let objectName = null;
+      // let ast = null;
+
+      // path.get("specifiers").forEach((specifier) => {
+      //   if (t.isImportDefaultSpecifier(specifier)) {
+      //     /**
+      //      * import b from 'b'
+      //      */
+      //     objectProperties.push(`default: ${specifier.node.local.name}`);
+      //   } else if (t.isImportSpecifier(specifier)) {
+      //     /**
+      //      * import { a as ay, b } from 'a'
+      //      */
+      //     const imported = specifier.node.imported.name;
+      //     const local = specifier.node.local.name;
+      //     objectProperties.push(
+      //       imported === local ? local : `${imported}:${local}`
+      //     );
+      //   } else if (t.isImportNamespaceSpecifier(specifier)) {
+      //     objectName = specifier.node.local.name;
+      //   } else {
+      //     throw new Error("Import type not recognised");
+      //   }
+      // });
+
+      // if (!objectProperties.length) {
+      //   ast = template(`const ${objectName} = _exports(${filepath})`);
+      // } else {
+      //   ast = template(
+      //     `const { ${objectProperties.join(",")} } = _exports(${filepath})`
+      //   );
+      // }
+
+      // path.replaceWith(ast);
+      // return;
+
+      /*
       const variables = [];
       const objectProperties = [];
 
@@ -122,6 +166,7 @@ function transform(filepath) {
       });
 
       path.replaceWith(t.variableDeclaration("const", variables));
+      */
     },
     ExportDefaultDeclaration(path) {
       if (path.has("declaration")) {
@@ -241,6 +286,62 @@ function transform(filepath) {
     code
   );
   return transformedCode;
+}
+
+function getAbsolutePath(filename) {
+  return resolve.sync(filename, {
+    basedir: BASE_DIR,
+  });
+}
+
+function handleImportDeclaration(path) {
+  const filepath = getAbsolutePath(path.get("source").node.value);
+  let objectProperties = [];
+  let objectName = null;
+  let ast = null;
+
+  path.get("specifiers").forEach((specifier) => {
+    if (t.isImportDefaultSpecifier(specifier)) {
+      /**
+       * import b from 'b'
+       */
+      objectProperties.push(`default: ${specifier.node.local.name}`);
+    } else if (t.isImportSpecifier(specifier)) {
+      /**
+       * import { a as ay, b } from 'a'
+       */
+      const imported = specifier.node.imported.name;
+      const local = specifier.node.local.name;
+      objectProperties.push(
+        imported === local ? local : `${imported}:${local}`
+      );
+    } else if (t.isImportNamespaceSpecifier(specifier)) {
+      /**
+       * import * as e from 'e'
+       */
+      objectName = specifier.node.local.name;
+    } else {
+      throw new Error("Import type not recognised");
+    }
+  });
+
+  if (!path.get("specifiers").length) {
+    /**
+     * import './a'
+     */
+    ast = template(`
+          _require('${getAbsolutePath(filepath)}')
+        `)();
+  } else if (!objectProperties.length) {
+    ast = template(`const ${objectName} = _exports(${filepath})`);
+  } else {
+    ast = template(
+      `const { ${objectProperties.join(",")} } = _exports(${filepath})`
+    );
+  }
+
+  path.replaceWith(ast);
+  return;
 }
 
 // BASE_DIR =
