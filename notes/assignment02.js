@@ -1,19 +1,19 @@
 // in main.js
-const a = require('a')
+const a = require("a");
 
 // in a.js
-const b = require('b')
+const b = require("b");
 
 // b.js
-const a = require('a') // returns exportsMap[a] = undefined
+const a = require("a"); // returns exportsMap[a] = undefined
 
-const c = require('c')
+const c = require("c");
 
 // c.js
-const a = require('a') // returns exportsMap[a] = undefined
-const b = require('b') // returns exportsMap[b] = undefined
+const a = require("a"); // returns exportsMap[a] = undefined
+const b = require("b"); // returns exportsMap[b] = undefined
 
-exportsMap[c] = 'c'
+exportsMap[c] = "c";
 
 setTimeout(() => {
   console.log(`c.js | a=${a} | b=${b}`);
@@ -31,7 +31,7 @@ Changing main.js console log variable sequence won't change this console.log seq
 
   Is this an issue?
   If we were to do console log tracing, we would trace by the variables and the order of the imports does not matter
-*/ 
+*/
 
 /*
 What if we flip 
@@ -48,40 +48,42 @@ and replace variable with via require(a)?
 */
 
 // main.js
-const a = exports('./a').a;
-const b = exports('./b').b;
-const c = exports('./c').c;
+const a = exports("./a").a;
+const b = exports("./b").b;
+const c = exports("./c").c;
 
 setTimeout(() => {
-  console.log(`main.js | a=${require('a')} | b=${require('b')} | c=${require('c')}`);
+  console.log(
+    `main.js | a=${require("a")} | b=${require("b")} | c=${require("c")}`
+  );
 });
 
 // a.js
-const b = exports('./b').b;
-const c = exports('./c').c;
+const b = exports("./b").b;
+const c = exports("./c").c;
 
-exports('a') = 'a';
+exports("a") = "a";
 
 setTimeout(() => {
-  console.log(`a.js | b=${require('b')} | c=${require('c')}`);
+  console.log(`a.js | b=${require("b")} | c=${require("c")}`);
 });
 
 // b.js
-const a = exports('./a').a;
-const c = exports('./c').c;
+const a = exports("./a").a;
+const c = exports("./c").c;
 
-exports('b') = 'b'
+exports("b") = "b";
 
 setTimeout(() => {
-  console.log(`b.js | a=${require('a')} | c=${require('c')}`);
+  console.log(`b.js | a=${require("a")} | c=${require("c")}`);
 });
 // at this point of time, require('a') would return 'a'
 
 // c.js
-const a = exports('./a').a; // returns value 'a'
-const b = exports('./b').b; // returns value 'b'
+const a = exports("./a").a; // returns value 'a'
+const b = exports("./b").b; // returns value 'b'
 
-exports('c') = 'c'
+exports("c") = "c";
 
 setTimeout(() => {
   console.log(`c.js | a=${a} | b=${b}`);
@@ -110,26 +112,26 @@ require('./a');
 */
 
 // main.js
-const a = exports('./a');
-require('./a');
+const a = exports("./a");
+require("./a");
 
 // a.js
-const b = exports('./b');
-require('./b');
+const b = exports("./b");
+require("./b");
 
 // b.js
-const a = exports('./a');
-require('./a'); // returns undefined
-const c = exports('./c');
-require('./c');
+const a = exports("./a");
+require("./a"); // returns undefined
+const c = exports("./c");
+require("./c");
 
 // c.js
-const a = exports('./a');
-require('./a'); // returns undefined
-const b = exports('./b');
-require('./b') // return undefined
+const a = exports("./a");
+require("./a"); // returns undefined
+const b = exports("./b");
+require("./b"); // return undefined
 
-exports('./c') = 'c'
+exports("./c") = "c";
 
 setTimeout(() => {
   console.log(`c.js | a=${a} | b=${b}`);
@@ -144,3 +146,100 @@ require('./a')
   and let require('./a') return the file module while exports('./a') still returns undefined, circular dependencies will cause stack overflow
 
 */
+
+/*
+Should you change to object setter?
+*/
+const { default: log } = _exports["a"];
+// causes issue because when _exports['a'] is undefined, we cannot destructure undefined
+
+/*
+the destrucuture is another way of creating variables. Can we create an object that can take care of this undefined binding only when it's called?
+*/
+
+const { log } = {
+  ..._exports["a"],
+  get log() {
+    return _exports["a"].default;
+  },
+};
+// Still returns error because _exports['a'] is undefined so _exports['a'].default is hopeless
+
+import * as a from 'a';
+import log from 'e';
+
+log(a);
+
+_require('e').default(_require('a')); // <--- To get this, we need to store a map of imported variables to expression literals used?
+
+// Per module
+{
+  /**
+   * import * as a from 'a'
+   */
+  a : {
+    pathname: 'a',
+    replaceWith: _require('a'),
+  },
+  /**
+   * import log from 'e'
+   */
+  log: {
+    pathname: 'e',
+    replaceWith: require('e').default
+  },
+  /**
+   * import { a as ay } from 'a'
+   */
+  ay: {
+    pathname: 'a',
+    replaceWith: require('a').a
+  },
+  /**
+   * import { b } from 'a'
+   */
+  b: {
+    pathname: 'a',
+    replaceWith: require('a').b
+  }
+}
+
+/*
+Will need scoping.
+*/
+
+
+// from _require('a') we enter a.js
+export * as b from './b';
+export * from './c';
+export { d } from './d';
+
+// These are re-exports
+exports['a'].b = require('./b')
+
+// from _require('./b') we enter b.js
+export const a = 'b.js a';
+export const b = 'b.js b';
+export default 'b.js default';
+
+exports['b'].a;
+
+
+
+
+import a from './a';
+import { b } from 'b';
+
+console.log(`a + b = ${a + b}`);
+
+// becomes
+console.log(`a + b = ${_require('a').default + _require('b').b}`);
+
+// a.js
+const data = _require('c').default + _require('c').foo1() + _require('c').foo2;
+
+// c.js only exports
+
+/*
+How to replace all expressions that match localName with scopePerModule[expressionName].replaceWith?
+*/ 

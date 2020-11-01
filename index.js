@@ -57,116 +57,18 @@ function bundle(entryFile, outputFolder) {
   return outputFilepath;
 }
 
+let scopePerModule = null;
 function transform(filepath) {
   const code = fs.readFileSync(filepath, "utf8");
   const ast = parse(code, {
     sourceType: "module",
     sourceFilename: filepath,
   });
+  scopePerModule = {};
 
   traverse(ast, {
     ImportDeclaration(path) {
       handleImportDeclaration(path);
-
-      // // const source = path.get("source").node.value;
-      // const filepath = getAbsolutePath(path.get("source").node.value);
-      // // const filename = resolve.sync(source, {
-      // //   basedir: BASE_DIR,
-      // // });
-
-      // /**
-      //  * import './a'
-      //  */
-      // if (path.get("specifiers").length === 0) {
-      //   // const pathname = resolve.sync(path.get("source").node.value, {
-      //   //   basedir: BASE_DIR,
-      //   // });
-      //   const ast = template(`
-      //     _require('${getAbsolutePath(filepath)}')
-      //   `)();
-      //   path.replaceWith(ast);
-      //   return;
-      // }
-
-      // let objectProperties = [];
-      // let objectName = null;
-      // let ast = null;
-
-      // path.get("specifiers").forEach((specifier) => {
-      //   if (t.isImportDefaultSpecifier(specifier)) {
-      //     /**
-      //      * import b from 'b'
-      //      */
-      //     objectProperties.push(`default: ${specifier.node.local.name}`);
-      //   } else if (t.isImportSpecifier(specifier)) {
-      //     /**
-      //      * import { a as ay, b } from 'a'
-      //      */
-      //     const imported = specifier.node.imported.name;
-      //     const local = specifier.node.local.name;
-      //     objectProperties.push(
-      //       imported === local ? local : `${imported}:${local}`
-      //     );
-      //   } else if (t.isImportNamespaceSpecifier(specifier)) {
-      //     objectName = specifier.node.local.name;
-      //   } else {
-      //     throw new Error("Import type not recognised");
-      //   }
-      // });
-
-      // if (!objectProperties.length) {
-      //   ast = template(`const ${objectName} = _exports(${filepath})`);
-      // } else {
-      //   ast = template(
-      //     `const { ${objectProperties.join(",")} } = _exports(${filepath})`
-      //   );
-      // }
-
-      // path.replaceWith(ast);
-      // return;
-
-      /*
-      const variables = [];
-      const objectProperties = [];
-
-      path.get("specifiers").forEach((specifier) => {
-        if (t.isImportSpecifier(specifier)) {
-          const imported = specifier.node.imported.name;
-          const local = specifier.node.local.name;
-          objectProperties.push(
-            t.objectProperty(
-              t.identifier(imported),
-              t.identifier(local),
-              undefined,
-              true
-            )
-          );
-          variables.push(
-            t.variableDeclarator(
-              t.objectPattern(objectProperties),
-              t.callExpression(t.identifier("_require"), [
-                t.stringLiteral(filename),
-              ])
-            )
-          );
-        } else {
-          const name = specifier.node.local.name;
-          const init = t.isImportDefaultSpecifier(specifier)
-            ? t.memberExpression(
-                t.callExpression(t.identifier("_require"), [
-                  t.stringLiteral(filename),
-                ]),
-                t.identifier("default")
-              )
-            : t.callExpression(t.identifier("_require"), [
-                t.stringLiteral(filename),
-              ]);
-          variables.push(t.variableDeclarator(t.identifier(name), init));
-        }
-      });
-
-      path.replaceWith(t.variableDeclaration("const", variables));
-      */
     },
     ExportDefaultDeclaration(path) {
       if (path.has("declaration")) {
@@ -277,6 +179,7 @@ function transform(filepath) {
       `)();
       path.replaceWith(ast);
     },
+    // TODO: Replace all expressions that match localName with scopePerModule[expressionName].replaceWith
   });
 
   // TODO: return sourceMap
@@ -296,30 +199,54 @@ function getAbsolutePath(filename) {
 
 function handleImportDeclaration(path) {
   const filepath = getAbsolutePath(path.get("source").node.value);
-  let objectProperties = [];
-  let objectName = null;
-  let ast = null;
 
   path.get("specifiers").forEach((specifier) => {
     if (t.isImportDefaultSpecifier(specifier)) {
       /**
        * import b from 'b'
        */
-      objectProperties.push(`default: ${specifier.node.local.name}`);
+      const localName = specifier.node.local.name;
+      if (!scopePerModule[localName]) {
+        scopePerModule[localName] = {
+          replaceWith: `_require('${getAbsolutePath(filepath)}').default`,
+        };
+      } else {
+        throw new Error(`Identifier ${localName} has already been declared!`);
+      }
+
+      // objectProperties.push(`default: ${specifier.node.local.name}`);
     } else if (t.isImportSpecifier(specifier)) {
       /**
        * import { a as ay, b } from 'a'
        */
-      const imported = specifier.node.imported.name;
-      const local = specifier.node.local.name;
-      objectProperties.push(
-        imported === local ? local : `${imported}:${local}`
-      );
+      const importedName = specifier.node.imported.name;
+      const localName = specifier.node.local.name || importedName;
+
+      if (!scopePerModule[localName]) {
+        scopePerModule[localName] = {
+          replaceWith: `_require('${getAbsolutePath(
+            filepath
+          )}').${importedName}`,
+        };
+      } else {
+        throw new Error(`Identifier ${localName} has already been declared!`);
+      }
+
+      // objectProperties.push(
+      //   imported === local ? local : `${imported}:${local}`
+      // );
     } else if (t.isImportNamespaceSpecifier(specifier)) {
       /**
        * import * as e from 'e'
        */
-      objectName = specifier.node.local.name;
+      const localName = specifier.node.local.name;
+      if (!scopePerModule[localName]) {
+        scopePerModule[localName] = {
+          replaceWith: `_require('${getAbsolutePath(filepath)}')`,
+        };
+      } else {
+        throw new Error(`Identifier ${localName} has already been declared!`);
+      }
     } else {
       throw new Error("Import type not recognised");
     }
@@ -332,15 +259,10 @@ function handleImportDeclaration(path) {
     ast = template(`
           _require('${getAbsolutePath(filepath)}')
         `)();
-  } else if (!objectProperties.length) {
-    ast = template(`const ${objectName} = _exports['${filepath}']`)();
+    path.replaceWith(ast);
   } else {
-    ast = template(
-      `const { ${objectProperties.join(",")} } = _exports['${filepath}']`
-    )();
+    path.remove();
   }
-
-  path.replaceWith(ast);
   return;
 }
 
