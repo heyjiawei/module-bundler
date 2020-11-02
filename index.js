@@ -180,18 +180,32 @@ function transform(filepath) {
       path.replaceWith(ast);
     },
     FunctionDeclaration(path) {
-      // TODO: Replace all expressions that match localName with scopePerModule[expressionName].replaceWith
-    },
-    ExpressionStatement(path) {
-      // TODO: Replace all expressions that match localName with scopePerModule[expressionName].replaceWith
+      // TODO: Replace all expressions that match localName with scopePerModule[expressionName].codeString
       path.traverse({
         Identifier(path) {
-          // ...
+          console.log("Identifier in FunctionDeclaration");
+        },
+      });
+    },
+    ExpressionStatement(path) {
+      path.traverse({
+        Identifier(path) {
+          const name = path.node.name;
+          if (scopePerModule[name]) {
+            const ast = template(scopePerModule[name].codeString)();
+            console.log({ name, scopePerModule });
+            path.replaceWith(ast);
+          }
         },
       });
     },
     VariableDeclaration(path) {
       // TODO: Replace all expressions that match localName with scopePerModule[expressionName].replaceWith
+      path.traverse({
+        Identifier(path) {
+          console.log("Identifier in VariableDeclaration");
+        },
+      });
     },
   });
 
@@ -221,7 +235,7 @@ function handleImportDeclaration(path) {
       const localName = specifier.node.local.name;
       if (!scopePerModule[localName]) {
         scopePerModule[localName] = {
-          replaceWith: `_require('${getAbsolutePath(filepath)}').default`,
+          codeString: `_require('${getAbsolutePath(filepath)}').default`,
         };
       } else {
         throw new Error(`Identifier ${localName} has already been declared!`);
@@ -237,7 +251,7 @@ function handleImportDeclaration(path) {
 
       if (!scopePerModule[localName]) {
         scopePerModule[localName] = {
-          replaceWith: `_require('${getAbsolutePath(
+          codeString: `_require('${getAbsolutePath(
             filepath
           )}').${importedName}`,
         };
@@ -255,7 +269,7 @@ function handleImportDeclaration(path) {
       const localName = specifier.node.local.name;
       if (!scopePerModule[localName]) {
         scopePerModule[localName] = {
-          replaceWith: `_require('${getAbsolutePath(filepath)}')`,
+          codeString: `_require('${getAbsolutePath(filepath)}')`,
         };
       } else {
         throw new Error(`Identifier ${localName} has already been declared!`);
@@ -280,9 +294,9 @@ function handleImportDeclaration(path) {
 }
 
 BASE_DIR =
-  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code";
+  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code";
 const singleEntrypoint =
-  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code/main.js";
+  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code/main.js";
 
 bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/output");
 
