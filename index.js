@@ -188,13 +188,14 @@ function transform(filepath) {
       });
     },
     ExpressionStatement(path) {
+      // TODO: Do we want to traverse ExpressionStatement or check Identifier's parents?
       path.traverse({
         Identifier(path) {
           const name = path.node.name;
-          if (scopePerModule[name]) {
+          if (t.isIdentifier(path.node) && scopePerModule[name]) {
             const ast = template(scopePerModule[name].codeString)();
-            console.log({ name, scopePerModule });
             path.replaceWith(ast);
+            path.skip();
           }
         },
       });
