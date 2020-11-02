@@ -188,23 +188,24 @@ function transform(filepath) {
       });
     },
     ExpressionStatement(path) {
-      // TODO: Do we want to traverse ExpressionStatement or check Identifier's parents?
       path.traverse({
         Identifier(path) {
-          const name = path.node.name;
-          if (t.isIdentifier(path.node) && scopePerModule[name]) {
-            const ast = template(scopePerModule[name].codeString)();
-            path.replaceWith(ast);
-            path.skip();
-          }
+          transformNode(path.node.name, path);
         },
       });
     },
     VariableDeclaration(path) {
-      // TODO: Replace all expressions that match localName with scopePerModule[expressionName].replaceWith
       path.traverse({
         Identifier(path) {
-          console.log("Identifier in VariableDeclaration");
+          const parentNode = path.parent;
+          if (
+            t.isBinaryExpression(parentNode) ||
+            t.isMemberExpression(parentNode)
+          ) {
+            transformNode(path.node.name, path);
+          } else {
+            console.log("Identifier in VariableDeclaration");
+          }
         },
       });
     },
@@ -292,6 +293,14 @@ function handleImportDeclaration(path) {
     path.remove();
   }
   return;
+}
+
+function transformNode(identifierName, path) {
+  if (!scopePerModule[identifierName]) return;
+
+  const ast = template(scopePerModule[identifierName].codeString)();
+  path.replaceWith(ast);
+  path.skip();
 }
 
 BASE_DIR =
