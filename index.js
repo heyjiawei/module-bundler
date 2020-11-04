@@ -190,6 +190,7 @@ function transform(filepath) {
     ExpressionStatement(path) {
       path.traverse({
         Identifier(path) {
+          if (isTransformedNode(path)) return;
           transformNode(path.node.name, path);
         },
       });
@@ -303,10 +304,19 @@ function transformNode(identifierName, path) {
   path.skip();
 }
 
+function isTransformedNode(path) {
+  const parent = path.parent;
+  return (
+    parent.type === "MemberExpression" &&
+    parent.object.callee &&
+    parent.object.callee.name === "_require"
+  );
+}
+
 BASE_DIR =
-  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code";
+  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/05/code";
 const singleEntrypoint =
-  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/01/code/main.js";
+  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/05/code/main.js";
 
 bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/output");
 
