@@ -243,8 +243,6 @@ function handleImportDeclaration(path) {
       } else {
         throw new Error(`Identifier ${localName} has already been declared!`);
       }
-
-      // objectProperties.push(`default: ${specifier.node.local.name}`);
     } else if (t.isImportSpecifier(specifier)) {
       /**
        * import { a as ay, b } from 'a'
@@ -261,10 +259,6 @@ function handleImportDeclaration(path) {
       } else {
         throw new Error(`Identifier ${localName} has already been declared!`);
       }
-
-      // objectProperties.push(
-      //   imported === local ? local : `${imported}:${local}`
-      // );
     } else if (t.isImportNamespaceSpecifier(specifier)) {
       /**
        * import * as e from 'e'
@@ -282,17 +276,10 @@ function handleImportDeclaration(path) {
     }
   });
 
-  if (!path.get("specifiers").length) {
-    /**
-     * import './a'
-     */
-    ast = template(`
+  ast = template(`
           _require('${getAbsolutePath(filepath)}')
         `)();
-    path.replaceWith(ast);
-  } else {
-    path.remove();
-  }
+  path.replaceWith(ast);
   return;
 }
 
@@ -313,46 +300,13 @@ function isTransformedNode(path) {
   );
 }
 
-BASE_DIR =
-  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/05/code";
-const singleEntrypoint =
-  "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/05/code/main.js";
+// BASE_DIR =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/05/code";
+// const singleEntrypoint =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/05/code/main.js";
 
-bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/output");
+// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
-
-/**
- output a file like that executes itself. File looks sth like this:
-
- ```js
- import a from 'a.js'
- export default a;
- ```
- 
- ((entryFile) => {
-  const exportsMap = {};
-  const moduleMap = { 
-    0: (exportToPopulate, getModule, filepath) => {
-      const a = getModule('a.js').default;
-      // copied contents of entry file
-      exportsToPopulate.default = a;
-    },
-    'a.js': (exportToPopulate, getModule) => {
-      // copied contents of entryFile
-    }
-  };
-  
-  function getModule(filepath) {
-      if (!exportsMap[filepath]) {
-        exportsMap[filepath] = {};
-        moduleMap[filepath](exportsMap[filepath], getModule);
-      }
-      return exportsMap[filepath];
-    }
-
-  return getModule(entryFile);
- })(0)
- */
 
 module.exports = bundle;
