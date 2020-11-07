@@ -112,7 +112,8 @@ function transform(filepath) {
             object: t.objectExpression(objectProperties),
           });
 
-          path.replaceWith(ast);
+          path.replaceWith(path.node.declaration);
+          path.insertAfter(ast);
         } else {
           console.error("Unhandled named export declaration");
         }
@@ -300,12 +301,12 @@ function isTransformedNode(path) {
   );
 }
 
-// BASE_DIR =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/05/code";
-// const singleEntrypoint =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/05/code/main.js";
+BASE_DIR =
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/06/code";
+const singleEntrypoint =
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/06/code/main.js";
 
-// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
+bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
