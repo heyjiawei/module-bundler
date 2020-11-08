@@ -86,39 +86,14 @@ function transform(filepath) {
     ExportNamedDeclaration(path) {
       if (path.has("declaration")) {
         if (t.isFunctionDeclaration(path.node.declaration)) {
-          const name = path.node.declaration.id.name;
-          const functionNode = path.node.declaration;
-          path.replaceWith(functionNode);
-          path.insertAfter(
-            t.assignmentExpression(
-              "=",
-              t.memberExpression(t.identifier("_exports"), t.identifier(name)),
-              t.identifier(name)
-            )
-          );
+          handleExportFunctionDeclaration(path);
         } else if (t.isVariableDeclaration(path.node.declaration)) {
-          const objectProperties = [];
-          const { declarations } = path.node.declaration;
-          declarations.forEach((declarator) => {
-            const key = declarator.id.name;
-            const value = declarator.init;
-            objectProperties.push(t.objectProperty(t.identifier(key), value));
-          });
-          const buildRequire = template(`
-            _exports = Object.assign(_exports, %%object%%)
-          `);
-
-          const ast = buildRequire({
-            object: t.objectExpression(objectProperties),
-          });
-
-          path.replaceWith(path.node.declaration);
-          path.insertAfter(ast);
+          handleExportVariableDeclaration(path);
         } else {
           console.error("Unhandled named export declaration");
         }
       } else if (path.has("specifiers")) {
-        // TODO: Re-exports and normal exports
+        // Re-exports and normal exports
         const isReExport = path.has("source");
         path.get("specifiers").forEach((specifier) => {
           const exportedName = specifier.get("exported").node.name;
@@ -145,9 +120,7 @@ function transform(filepath) {
             // handles
             // export {d} from './d';
             // export {d as e} from './d';
-            // export {
-            //   hey
-            // }
+
             if (isReExport) {
               const pathname = resolve.sync(path.get("source").node.value, {
                 basedir: BASE_DIR,
@@ -162,11 +135,21 @@ function transform(filepath) {
                 localName,
               });
               path.replaceWith(ast);
+            } else {
+              // export {
+              //   hey
+              // }
+              const ast = getExportAST(exportedName, localName);
+              path.insertAfter(ast);
             }
           } else {
             console.error("Unhandled ExportNamedDeclaration");
           }
         });
+
+        if (!isReExport) {
+          path.remove();
+        }
       }
     },
     ExportAllDeclaration(path) {
@@ -284,6 +267,87 @@ function handleImportDeclaration(path) {
   return;
 }
 
+function handleExportNamedDeclaration(path) {
+  if (path.has("declaration")) {
+    // Handles function and variable exports
+    if (t.isFunctionDeclaration(path.node.declaration)) {
+      handleExportFunctionDeclaration(path);
+    } else if (t.isVariableDeclaration(path.node.declaration)) {
+      handleExportVariableDeclaration(path);
+    } else {
+      console.error("Unhandled named export declaration");
+    }
+  } else if (path.has("specifiers")) {
+    // Handles re-exports and normal exports
+  }
+}
+
+/**
+ * Handles
+ * export function a() {}
+ *
+ * transforms it into
+ * function a() {}
+ * Object.defineProperties(_exports, {
+ *  'a' : { get: function() { return a; }}
+ * })
+ */
+function handleExportFunctionDeclaration(path) {
+  const functionNode = path.node.declaration;
+  const name = functionNode.id.name;
+  path.replaceWith(functionNode);
+  const ast = getExportAST(name);
+  path.insertAfter(ast);
+}
+
+function getExportAST(exportName, localName) {
+  if (!localName) {
+    localName = exportName;
+  }
+
+  const ast = template(`
+  Object.defineProperties(_exports, {
+    '${exportName}': { get: function() { return ${localName}; }}
+  })
+  `)();
+  return ast;
+}
+
+/**
+ * Handles
+ * export const a = 1;
+ *
+ * TODO: 
+ * transforms it into
+ * _exports = Object.assign(_exports, { a: a })
+ * 
+ * test cases: 
+ * export const c = a;
+export const e = 1;
+export const f = () => {}
+export const h = function() {}, we = () => {};
+export const i = function letsgo() {}
+ */
+function handleExportVariableDeclaration(path) {
+  const objectProperties = [];
+  const { declarations } = path.node.declaration;
+  declarations.forEach((declarator) => {
+    const key = declarator.id.name;
+    const value = declarator.init;
+    objectProperties.push(t.objectProperty(t.identifier(key), value));
+  });
+  const buildRequire = template(`
+    _exports = Object.assign(_exports, %%object%%)
+  `);
+
+  const ast = buildRequire({
+    object: t.objectExpression(objectProperties),
+  });
+
+  path.replaceWith(path.node.declaration);
+  path.insertAfter(ast);
+}
+
 function transformNode(identifierName, path) {
   if (!scopePerModule[identifierName]) return;
 
@@ -302,9 +366,9 @@ function isTransformedNode(path) {
 }
 
 BASE_DIR =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/06/code";
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/07/code";
 const singleEntrypoint =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/06/code/main.js";
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/07/code/main.js";
 
 bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
