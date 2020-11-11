@@ -175,7 +175,9 @@ function transform(filepath) {
       path.traverse({
         Identifier(path) {
           if (isTransformedNode(path)) return;
-          transformNode(path.node.name, path);
+          if (isModuleScope(path, path.node.name)) {
+            transformNode(path, path.node.name);
+          }
         },
       });
     },
@@ -187,7 +189,7 @@ function transform(filepath) {
             t.isBinaryExpression(parentNode) ||
             t.isMemberExpression(parentNode)
           ) {
-            transformNode(path.node.name, path);
+            transformNode(path, path.node.name);
           } else {
             console.log("Identifier in VariableDeclaration");
           }
@@ -348,7 +350,7 @@ function handleExportVariableDeclaration(path) {
   path.insertAfter(ast);
 }
 
-function transformNode(identifierName, path) {
+function transformNode(path, identifierName) {
   if (!scopePerModule[identifierName]) return;
 
   const ast = template(scopePerModule[identifierName].codeString)();
@@ -365,10 +367,20 @@ function isTransformedNode(path) {
   );
 }
 
+function isModuleScope(path, name) {
+  if (path.scope.block.type === "Program") {
+    return true;
+  } else if (path.scope.bindings[name]) {
+    return false;
+  } else {
+    return isModuleScope(path.scope.path.parentPath, name);
+  }
+}
+
 BASE_DIR =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/07/code";
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/08/code";
 const singleEntrypoint =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/07/code/main.js";
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/08/code/main.js";
 
 bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
