@@ -269,21 +269,6 @@ function handleImportDeclaration(path) {
   return;
 }
 
-function handleExportNamedDeclaration(path) {
-  if (path.has("declaration")) {
-    // Handles function and variable exports
-    if (t.isFunctionDeclaration(path.node.declaration)) {
-      handleExportFunctionDeclaration(path);
-    } else if (t.isVariableDeclaration(path.node.declaration)) {
-      handleExportVariableDeclaration(path);
-    } else {
-      console.error("Unhandled named export declaration");
-    }
-  } else if (path.has("specifiers")) {
-    // Handles re-exports and normal exports
-  }
-}
-
 /**
  * Handles
  * export function a() {}
@@ -309,7 +294,12 @@ function getExportAST(exportName, localName) {
 
   const ast = template(`
   Object.defineProperties(_exports, {
-    '${exportName}': { get: function() { return ${localName}; }}
+    '${exportName}': { 
+      get: function() { 
+        return ${localName}; 
+      },
+      enumerable: true
+    }
   })
   `)();
   return ast;
@@ -319,9 +309,13 @@ function getExportAST(exportName, localName) {
  * Handles
  * export const a = 1;
  *
- * TODO: 
  * transforms it into
- * _exports = Object.assign(_exports, { a: a })
+ * 
+  _exports = Object.defineProperties(_exports, { 
+    get: function() {
+      return a;
+    }
+  })
  * 
  * test cases: 
  * export const c = a;
@@ -331,23 +325,32 @@ export const h = function() {}, we = () => {};
 export const i = function letsgo() {}
  */
 function handleExportVariableDeclaration(path) {
-  const objectProperties = [];
+  const exportVariables = [];
   const { declarations } = path.node.declaration;
   declarations.forEach((declarator) => {
-    const key = declarator.id.name;
-    const value = declarator.init;
-    objectProperties.push(t.objectProperty(t.identifier(key), value));
-  });
-  const buildRequire = template(`
-    _exports = Object.assign(_exports, %%object%%)
-  `);
+    const variableName = declarator.id.name;
 
-  const ast = buildRequire({
-    object: t.objectExpression(objectProperties),
+    const buildRequire = template(`
+      Object.defineProperties(_exports, {
+        '${variableName}': {
+          get: function() {
+            return %%value%%;
+          },
+          enumerable: true
+        }
+      })
+    `);
+
+    const ast = buildRequire({
+      value: declarator.id,
+    });
+    exportVariables.push(ast);
   });
 
   path.replaceWith(path.node.declaration);
-  path.insertAfter(ast);
+  exportVariables.forEach((ast) => {
+    path.insertAfter(ast);
+  });
 }
 
 function transformNode(path, identifierName) {
@@ -377,12 +380,12 @@ function isModuleScope(path, name) {
   }
 }
 
-BASE_DIR =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/08/code";
-const singleEntrypoint =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/08/code/main.js";
+// BASE_DIR =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/02/code";
+// const singleEntrypoint =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/02/code/main.js";
 
-bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
+// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
