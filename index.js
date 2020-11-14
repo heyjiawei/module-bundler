@@ -42,7 +42,7 @@ function bundle(entryFile, outputFolder) {
     const exportsMap = {};
 
     function getModule(filepath) {
-      if (!exportsMap[filepath]) {
+      if (exportsMap[filepath] == null) {
         exportsMap[filepath] = {};
         moduleMap[filepath](exportsMap[filepath], getModule);
       }
@@ -60,71 +60,18 @@ function bundle(entryFile, outputFolder) {
   };
 }
 
+let scopePerModule = null;
 function transform(filepath) {
   const code = fs.readFileSync(filepath, "utf8");
   const ast = parse(code, {
     sourceType: "module",
     sourceFilename: filepath,
   });
+  scopePerModule = {};
 
   traverse(ast, {
     ImportDeclaration(path) {
-      const source = path.node.source.value;
-      const filename = resolve.sync(source, {
-        basedir: BASE_DIR,
-      });
-
-      if (path.get("specifiers").length === 0) {
-        const pathname = resolve.sync(path.get("source").node.value, {
-          basedir: BASE_DIR,
-        });
-        const ast = template(`
-          _require('${pathname}')
-        `)();
-        path.replaceWith(ast);
-        return;
-      }
-
-      const variables = [];
-      const objectProperties = [];
-
-      path.get("specifiers").forEach((specifier) => {
-        if (t.isImportSpecifier(specifier)) {
-          const imported = specifier.node.imported.name;
-          const local = specifier.node.local.name;
-          objectProperties.push(
-            t.objectProperty(
-              t.identifier(imported),
-              t.identifier(local),
-              undefined,
-              true
-            )
-          );
-          variables.push(
-            t.variableDeclarator(
-              t.objectPattern(objectProperties),
-              t.callExpression(t.identifier("_require"), [
-                t.stringLiteral(filename),
-              ])
-            )
-          );
-        } else {
-          const name = specifier.node.local.name;
-          const init = t.isImportDefaultSpecifier(specifier)
-            ? t.memberExpression(
-                t.callExpression(t.identifier("_require"), [
-                  t.stringLiteral(filename),
-                ]),
-                t.identifier("default")
-              )
-            : t.callExpression(t.identifier("_require"), [
-                t.stringLiteral(filename),
-              ]);
-          variables.push(t.variableDeclarator(t.identifier(name), init));
-        }
-      });
-
-      path.replaceWith(t.variableDeclaration("const", variables));
+      handleImportDeclaration(path);
     },
     ExportDefaultDeclaration(path) {
       if (path.has("declaration")) {
@@ -142,38 +89,14 @@ function transform(filepath) {
     ExportNamedDeclaration(path) {
       if (path.has("declaration")) {
         if (t.isFunctionDeclaration(path.node.declaration)) {
-          const name = path.node.declaration.id.name;
-          const functionNode = path.node.declaration;
-          path.replaceWith(functionNode);
-          path.insertAfter(
-            t.assignmentExpression(
-              "=",
-              t.memberExpression(t.identifier("_exports"), t.identifier(name)),
-              t.identifier(name)
-            )
-          );
+          handleExportFunctionDeclaration(path);
         } else if (t.isVariableDeclaration(path.node.declaration)) {
-          const objectProperties = [];
-          const { declarations } = path.node.declaration;
-          declarations.forEach((declarator) => {
-            const key = declarator.id.name;
-            const value = declarator.init;
-            objectProperties.push(t.objectProperty(t.identifier(key), value));
-          });
-          const buildRequire = template(`
-            _exports = Object.assign(_exports, %%object%%)
-          `);
-
-          const ast = buildRequire({
-            object: t.objectExpression(objectProperties),
-          });
-
-          path.replaceWith(ast);
+          handleExportVariableDeclaration(path);
         } else {
           console.error("Unhandled named export declaration");
         }
       } else if (path.has("specifiers")) {
-        // TODO: Re-exports and normal exports
+        // Re-exports and normal exports
         const isReExport = path.has("source");
         path.get("specifiers").forEach((specifier) => {
           const exportedName = specifier.get("exported").node.name;
@@ -200,9 +123,7 @@ function transform(filepath) {
             // handles
             // export {d} from './d';
             // export {d as e} from './d';
-            // export {
-            //   hey
-            // }
+
             if (isReExport) {
               const pathname = resolve.sync(path.get("source").node.value, {
                 basedir: BASE_DIR,
@@ -217,11 +138,21 @@ function transform(filepath) {
                 localName,
               });
               path.replaceWith(ast);
+            } else {
+              // export {
+              //   hey
+              // }
+              const ast = getExportAST(exportedName, localName);
+              path.insertAfter(ast);
             }
           } else {
             console.error("Unhandled ExportNamedDeclaration");
           }
         });
+
+        if (!isReExport) {
+          path.remove();
+        }
       }
     },
     ExportAllDeclaration(path) {
@@ -235,6 +166,39 @@ function transform(filepath) {
       `)();
       path.replaceWith(ast);
     },
+    FunctionDeclaration(path) {
+      // TODO: Replace all expressions that match localName with scopePerModule[expressionName].codeString
+      path.traverse({
+        Identifier(path) {
+          console.log("Identifier in FunctionDeclaration");
+        },
+      });
+    },
+    ExpressionStatement(path) {
+      path.traverse({
+        Identifier(path) {
+          if (isTransformedNode(path)) return;
+          if (isModuleScope(path, path.node.name)) {
+            transformNode(path, path.node.name);
+          }
+        },
+      });
+    },
+    VariableDeclaration(path) {
+      path.traverse({
+        Identifier(path) {
+          const parentNode = path.parent;
+          if (
+            t.isBinaryExpression(parentNode) ||
+            t.isMemberExpression(parentNode)
+          ) {
+            transformNode(path, path.node.name);
+          } else {
+            console.log("Identifier in VariableDeclaration");
+          }
+        },
+      });
+    },
   });
 
   // TODO: return sourceMap
@@ -246,46 +210,186 @@ function transform(filepath) {
   return transformedCode;
 }
 
-// BASE_DIR =
-//   "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code";
-// const singleEntrypoint =
-//   "/home/jiawei/Documents/rk-webpack-clone-master/assignments/02/fixtures/02/code/main.js";
+function getAbsolutePath(filename) {
+  return resolve.sync(filename, {
+    basedir: BASE_DIR,
+  });
+}
 
-// bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/output");
+function handleImportDeclaration(path) {
+  const filepath = getAbsolutePath(path.get("source").node.value);
 
-// console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
+  path.get("specifiers").forEach((specifier) => {
+    if (t.isImportDefaultSpecifier(specifier)) {
+      /**
+       * import b from 'b'
+       */
+      const localName = specifier.node.local.name;
+      if (!scopePerModule[localName]) {
+        scopePerModule[localName] = {
+          codeString: `_require('${getAbsolutePath(filepath)}').default`,
+        };
+      } else {
+        throw new Error(`Identifier ${localName} has already been declared!`);
+      }
+    } else if (t.isImportSpecifier(specifier)) {
+      /**
+       * import { a as ay, b } from 'a'
+       */
+      const importedName = specifier.node.imported.name;
+      const localName = specifier.node.local.name || importedName;
+
+      if (!scopePerModule[localName]) {
+        scopePerModule[localName] = {
+          codeString: `_require('${getAbsolutePath(
+            filepath
+          )}').${importedName}`,
+        };
+      } else {
+        throw new Error(`Identifier ${localName} has already been declared!`);
+      }
+    } else if (t.isImportNamespaceSpecifier(specifier)) {
+      /**
+       * import * as e from 'e'
+       */
+      const localName = specifier.node.local.name;
+      if (!scopePerModule[localName]) {
+        scopePerModule[localName] = {
+          codeString: `_require('${getAbsolutePath(filepath)}')`,
+        };
+      } else {
+        throw new Error(`Identifier ${localName} has already been declared!`);
+      }
+    } else {
+      throw new Error("Import type not recognised");
+    }
+  });
+
+  ast = template(`
+          _require('${getAbsolutePath(filepath)}')
+        `)();
+  path.replaceWith(ast);
+  return;
+}
 
 /**
- output a file like that executes itself. File looks sth like this:
-
- ```js
- import a from 'a.js'
- export default a;
- ```
- 
- ((entryFile) => {
-  const exportsMap = {};
-  const moduleMap = { 
-    0: (exportToPopulate, getModule, filepath) => {
-      const a = getModule('a.js').default;
-      // copied contents of entry file
-      exportsToPopulate.default = a;
-    },
-    'a.js': (exportToPopulate, getModule) => {
-      // copied contents of entryFile
-    }
-  };
-  
-  function getModule(filepath) {
-      if (!exportsMap[filepath]) {
-        exportsMap[filepath] = {};
-        moduleMap[filepath](exportsMap[filepath], getModule);
-      }
-      return exportsMap[filepath];
-    }
-
-  return getModule(entryFile);
- })(0)
+ * Handles
+ * export function a() {}
+ *
+ * transforms it into
+ * function a() {}
+ * Object.defineProperties(_exports, {
+ *  'a' : { get: function() { return a; }}
+ * })
  */
+function handleExportFunctionDeclaration(path) {
+  const functionNode = path.node.declaration;
+  const name = functionNode.id.name;
+  path.replaceWith(functionNode);
+  const ast = getExportAST(name);
+  path.insertAfter(ast);
+}
+
+function getExportAST(exportName, localName) {
+  if (!localName) {
+    localName = exportName;
+  }
+
+  const ast = template(`
+  Object.defineProperties(_exports, {
+    '${exportName}': { 
+      get: function() { 
+        return ${localName}; 
+      },
+      enumerable: true
+    }
+  })
+  `)();
+  return ast;
+}
+
+/**
+ * Handles
+ * export const a = 1;
+ *
+ * transforms it into
+ * 
+  _exports = Object.defineProperties(_exports, { 
+    get: function() {
+      return a;
+    }
+  })
+ * 
+ * test cases: 
+ * export const c = a;
+export const e = 1;
+export const f = () => {}
+export const h = function() {}, we = () => {};
+export const i = function letsgo() {}
+ */
+function handleExportVariableDeclaration(path) {
+  const exportVariables = [];
+  const { declarations } = path.node.declaration;
+  declarations.forEach((declarator) => {
+    const variableName = declarator.id.name;
+
+    const buildRequire = template(`
+      Object.defineProperties(_exports, {
+        '${variableName}': {
+          get: function() {
+            return %%value%%;
+          },
+          enumerable: true
+        }
+      })
+    `);
+
+    const ast = buildRequire({
+      value: declarator.id,
+    });
+    exportVariables.push(ast);
+  });
+
+  path.replaceWith(path.node.declaration);
+  exportVariables.forEach((ast) => {
+    path.insertAfter(ast);
+  });
+}
+
+function transformNode(path, identifierName) {
+  if (!scopePerModule[identifierName]) return;
+
+  const ast = template(scopePerModule[identifierName].codeString)();
+  path.replaceWith(ast);
+  path.skip();
+}
+
+function isTransformedNode(path) {
+  const parent = path.parent;
+  return (
+    parent.type === "MemberExpression" &&
+    parent.object.callee &&
+    parent.object.callee.name === "_require"
+  );
+}
+
+function isModuleScope(path, name) {
+  if (path.scope.block.type === "Program") {
+    return true;
+  } else if (path.scope.bindings[name]) {
+    return false;
+  } else {
+    return isModuleScope(path.scope.path.parentPath, name);
+  }
+}
+
+// BASE_DIR =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/02/code";
+// const singleEntrypoint =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/02/code/main.js";
+
+// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
+
+// console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
 module.exports = bundle;
