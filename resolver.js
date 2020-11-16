@@ -67,11 +67,13 @@ function createGraph(ast, moduleNode) {
       moduleNode.dependencies.push(dependency);
       createGraph(nextModuleAst, dependency.module);
     } else if (node.type === IMPORT_DECLARATION) {
-      const { nextModuleAst, dependency } = createDependency(
+      const { nextModuleAst, dependency, isNotJSFile } = createDependency(
         getFilepathFromSourceASTNode(moduleNode, node),
         getExports(node.specifiers)
       );
-      moduleNode.dependencies.push(dependency);
+      if (!isNotJSFile) {
+        moduleNode.dependencies.push(dependency);
+      }
 
       if (nextModuleAst) {
         createGraph(nextModuleAst, dependency.module);
@@ -88,6 +90,12 @@ function createDependency(filepath, exports, isEntryFile = false) {
     return {
       nextModuleAst: null,
       dependency: existingDependency,
+    };
+  } else if (isNotJSFile(filepath)) {
+    return {
+      nextModuleAst: null,
+      dependency: null,
+      isNotJSFile: true,
     };
   } else {
     // Otherwise, create dependency
@@ -226,6 +234,10 @@ function getFilepathFromSourceASTNode(parentModuleNode, node) {
       `Unable to resolve "${node.source.value}" from "${parentModuleNode.filepath}"`
     );
   }
+}
+
+function isNotJSFile(filepath) {
+  return filepath.endsWith(".png") || filepath.endsWith(".css");
 }
 
 // const singleEntrypoint = "";
