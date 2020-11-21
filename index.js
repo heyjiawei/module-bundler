@@ -7,12 +7,19 @@ const generate = require("@babel/generator").default;
 const t = require("@babel/types");
 const template = require("@babel/template").default;
 
+// LOADERS
+const cssLoader = require("./loaders/cssLoader");
+const fileLoader = require("./loaders/fileLoader");
+
 const { resolver: buildDependencyGraph } = require("./resolver");
+const rimraf = require("rimraf");
 
 let BASE_DIR;
+let OUTPUT_DIR;
 
 function bundle(entryFile, outputFolder) {
   BASE_DIR = path.dirname(entryFile);
+  OUTPUT_DIR = outputFolder;
 
   // Create output folder if it doesn't exist
   if (!fs.existsSync(outputFolder)) {
@@ -40,23 +47,36 @@ function bundle(entryFile, outputFolder) {
   ((entryFile) => {
     const moduleMap = ${moduleMap};
     const exportsMap = {};
+    const cssMap = {};
 
     function getModule(filepath) {
-      if (exportsMap[filepath] == null) {
+      if (filepath.endsWith('.css')) {
+        return cssLoader(filepath);
+      } else if (exportsMap[filepath] == null) {
         exportsMap[filepath] = {};
         moduleMap[filepath](exportsMap[filepath], getModule);
       }
       return exportsMap[filepath];
     }
 
+    function cssLoader(filepath) {
+      const filename = filepath.split('/').pop();
+      if (cssMap[filename]) return;
+
+      const link = document.createElement('link');
+      link.href = "./" + filename;
+      link.rel = 'stylesheet';
+      document.head.append(link);
+      cssMap[filename] = true;
+    }
+
     return getModule(entryFile);
   })("${entryFilename}")
   `
   );
-
   return {
-    folder: outputFilepath,
-    main: entryFile,
+    folder: outputFolder,
+    main: outputFilepath,
   };
 }
 
@@ -217,10 +237,21 @@ function getAbsolutePath(filename) {
 }
 
 function handleImportDeclaration(path) {
-  const filepath = getAbsolutePath(path.get("source").node.value);
+  let filepath = getAbsolutePath(path.get("source").node.value);
 
   path.get("specifiers").forEach((specifier) => {
-    if (t.isImportDefaultSpecifier(specifier)) {
+    /**
+     * Handle file imports. We can extend it to .svg | .jpeg etc.
+     * import url from './image.png';
+     */
+    if (t.isImportDefaultSpecifier(specifier) && filepath.endsWith(".png")) {
+      const localName = specifier.node.local.name;
+      if (!scopePerModule[localName]) {
+        scopePerModule[localName] = {
+          codeString: `"${path.get("source").node.value}"`,
+        };
+      }
+    } else if (t.isImportDefaultSpecifier(specifier)) {
       /**
        * import b from 'b'
        */
@@ -264,6 +295,16 @@ function handleImportDeclaration(path) {
       throw new Error("Import type not recognised");
     }
   });
+
+  // Check file extension and handover to Loaders file
+  // needs to be processed by loaders
+  if (filepath.endsWith(".png") && typeof fileLoader === "function") {
+    fileLoader(filepath, OUTPUT_DIR);
+    path.remove();
+    return;
+  } else if (filepath.endsWith(".css") && typeof cssLoader === "function") {
+    filepath = cssLoader(filepath, OUTPUT_DIR);
+  }
 
   ast = template(`
           _require('${getAbsolutePath(filepath)}')
@@ -384,10 +425,15 @@ function isModuleScope(path, name) {
 }
 
 // BASE_DIR =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/02/code";
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code";
 // const singleEntrypoint =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/02/code/main.js";
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code/main.js";
 
+// try {
+//   rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
+// } catch (error) {
+//   console.error(`Error while deleting ${error}.`);
+// }
 // bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
