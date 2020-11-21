@@ -7,12 +7,18 @@ const generate = require("@babel/generator").default;
 const t = require("@babel/types");
 const template = require("@babel/template").default;
 
+// LOADERS
+const cssLoader = require("./loaders/cssLoader");
+
 const { resolver: buildDependencyGraph } = require("./resolver");
+const rimraf = require("rimraf");
 
 let BASE_DIR;
+let OUTPUT_DIR;
 
 function bundle(entryFile, outputFolder) {
   BASE_DIR = path.dirname(entryFile);
+  OUTPUT_DIR = outputFolder;
 
   // Create output folder if it doesn't exist
   if (!fs.existsSync(outputFolder)) {
@@ -41,20 +47,37 @@ function bundle(entryFile, outputFolder) {
   ((entryFile) => {
     const moduleMap = ${moduleMap};
     const exportsMap = {};
+    const cssMap = {};
 
     function getModule(filepath) {
-      if (exportsMap[filepath] == null) {
+      if (filepath.endsWith('.css')) {
+        return cssLoader(filepath);
+      } else if (exportsMap[filepath] == null) {
         exportsMap[filepath] = {};
         moduleMap[filepath](exportsMap[filepath], getModule);
       }
       return exportsMap[filepath];
     }
 
+    function cssLoader(filepath) {
+      const filename = filepath.split('/').pop();
+      if (cssMap[filename]) return;
+
+      const link = document.createElement('link');
+      link.href = "./" + filename;
+      link.rel = 'stylesheet';
+      document.head.append(link);
+      cssMap[filename] = true;
+    }
+
     return getModule(entryFile);
   })("${entryFilename}")
   `
   );
-  return outputFilepath;
+  return {
+    folder: outputFolder,
+    main: outputFilepath,
+  };
 }
 
 let scopePerModule = null;
@@ -214,13 +237,14 @@ function getAbsolutePath(filename) {
 }
 
 function handleImportDeclaration(path) {
-  const filepath = getAbsolutePath(path.get("source").node.value);
+  let filepath = getAbsolutePath(path.get("source").node.value);
 
   path.get("specifiers").forEach((specifier) => {
     if (t.isImportDefaultSpecifier(specifier)) {
       /**
        * import b from 'b'
        */
+
       const localName = specifier.node.local.name;
       if (!scopePerModule[localName]) {
         scopePerModule[localName] = {
@@ -261,6 +285,12 @@ function handleImportDeclaration(path) {
       throw new Error("Import type not recognised");
     }
   });
+
+  // Check file extension and handover to Loaders file
+  // needs to be processed by loaders
+  if (filepath.endsWith(".css") && typeof cssLoader === "function") {
+    filepath = cssLoader(filepath, OUTPUT_DIR);
+  }
 
   ast = template(`
           _require('${getAbsolutePath(filepath)}')
@@ -380,12 +410,17 @@ function isModuleScope(path, name) {
   }
 }
 
-// BASE_DIR =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/02/code";
-// const singleEntrypoint =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/02/code/main.js";
+BASE_DIR =
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/01/code";
+const singleEntrypoint =
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/01/code/main.js";
 
-// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
+try {
+  rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
+} catch (error) {
+  console.error(`Error while deleting ${error}.`);
+}
+bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
