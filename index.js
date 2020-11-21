@@ -9,6 +9,7 @@ const template = require("@babel/template").default;
 
 // LOADERS
 const cssLoader = require("./loaders/cssLoader");
+const fileLoader = require("./loaders/fileLoader");
 
 const { resolver: buildDependencyGraph } = require("./resolver");
 const rimraf = require("rimraf");
@@ -240,11 +241,21 @@ function handleImportDeclaration(path) {
   let filepath = getAbsolutePath(path.get("source").node.value);
 
   path.get("specifiers").forEach((specifier) => {
-    if (t.isImportDefaultSpecifier(specifier)) {
+    /**
+     * Handle file imports. We can extend it to .svg | .jpeg etc.
+     * import url from './image.png';
+     */
+    if (t.isImportDefaultSpecifier(specifier) && filepath.endsWith(".png")) {
+      const localName = specifier.node.local.name;
+      if (!scopePerModule[localName]) {
+        scopePerModule[localName] = {
+          codeString: `"${path.get("source").node.value}"`,
+        };
+      }
+    } else if (t.isImportDefaultSpecifier(specifier)) {
       /**
        * import b from 'b'
        */
-
       const localName = specifier.node.local.name;
       if (!scopePerModule[localName]) {
         scopePerModule[localName] = {
@@ -288,7 +299,11 @@ function handleImportDeclaration(path) {
 
   // Check file extension and handover to Loaders file
   // needs to be processed by loaders
-  if (filepath.endsWith(".css") && typeof cssLoader === "function") {
+  if (filepath.endsWith(".png") && typeof fileLoader === "function") {
+    fileLoader(filepath, OUTPUT_DIR);
+    path.remove();
+    return;
+  } else if (filepath.endsWith(".css") && typeof cssLoader === "function") {
     filepath = cssLoader(filepath, OUTPUT_DIR);
   }
 
@@ -410,17 +425,17 @@ function isModuleScope(path, name) {
   }
 }
 
-BASE_DIR =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/01/code";
-const singleEntrypoint =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/01/code/main.js";
+// BASE_DIR =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code";
+// const singleEntrypoint =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code/main.js";
 
-try {
-  rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
-} catch (error) {
-  console.error(`Error while deleting ${error}.`);
-}
-bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
+// try {
+//   rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
+// } catch (error) {
+//   console.error(`Error while deleting ${error}.`);
+// }
+// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
