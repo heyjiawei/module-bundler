@@ -244,11 +244,16 @@ function handleImportDeclaration(path) {
      * Handle file imports. We can extend it to .svg | .jpeg etc.
      * import url from './image.png';
      */
-    if (t.isImportDefaultSpecifier(specifier) && filepath.endsWith(".png")) {
+    if (
+      t.isImportDefaultSpecifier(specifier) &&
+      filepath.endsWith(".png") &&
+      typeof fileLoader === "function"
+    ) {
       const localName = specifier.node.local.name;
       if (!scopePerModule[localName]) {
+        const updatedFilename = fileLoader(filepath, OUTPUT_DIR);
         scopePerModule[localName] = {
-          codeString: `"${path.get("source").node.value}"`,
+          codeString: `"./${updatedFilename}"`,
         };
       }
     } else if (t.isImportDefaultSpecifier(specifier)) {
@@ -299,7 +304,7 @@ function handleImportDeclaration(path) {
   // Check file extension and handover to Loaders file
   // needs to be processed by loaders
   if (filepath.endsWith(".png") && typeof fileLoader === "function") {
-    fileLoader(filepath, OUTPUT_DIR);
+    // fileLoader(filepath, OUTPUT_DIR);
     path.remove();
     return;
   } else if (filepath.endsWith(".css") && typeof cssLoader === "function") {
@@ -424,17 +429,17 @@ function isModuleScope(path, name) {
   }
 }
 
-// BASE_DIR =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code";
-// const singleEntrypoint =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code/main.js";
+BASE_DIR =
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code";
+const singleEntrypoint =
+  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code/main.js";
 
-// try {
-//   rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
-// } catch (error) {
-//   console.error(`Error while deleting ${error}.`);
-// }
-// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
+try {
+  rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
+} catch (error) {
+  console.error(`Error while deleting ${error}.`);
+}
+bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
