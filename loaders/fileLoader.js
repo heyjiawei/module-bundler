@@ -1,10 +1,10 @@
 const path = require("path");
 const fs = require("fs");
+const uniqid = require("uniqid");
 
 module.exports = function fileLoader(filepath, outputDir) {
-  const filename = filepath.split("/").pop();
-  const copiedFilename = path.join(outputDir, filename);
-  fs.copyFileSync(filepath, copiedFilename);
+  const newFilename = `${uniqid()}${path.extname(filepath)}`;
+  fs.copyFileSync(filepath, path.join(outputDir, newFilename));
 
-  return copiedFilename;
+  return newFilename;
 };
