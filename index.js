@@ -430,17 +430,17 @@ function isModuleScope(path, name) {
   }
 }
 
-BASE_DIR =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code";
-const singleEntrypoint =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code/main.js";
+// BASE_DIR =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code";
+// const singleEntrypoint =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code/main.js";
 
-try {
-  rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
-} catch (error) {
-  console.error(`Error while deleting ${error}.`);
-}
-bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
+// try {
+//   rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
+// } catch (error) {
+//   console.error(`Error while deleting ${error}.`);
+// }
+// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
