@@ -11,7 +11,7 @@ const websocketPort = 3001;
 
 // Websocket server
 const websocketServer = require("./websocket");
-websocketServer(websocketPort);
+const clientSockets = websocketServer(websocketPort);
 
 // bundle
 const path = require("path");
@@ -21,9 +21,23 @@ const outputFolder = path.resolve(process.cwd(), process.argv[3]);
 const { folder, main } = moduleBundler(entryFile, outputFolder);
 
 // File watcher
+const uniqid = require("uniqid");
 const watcher = require("./watcher");
-// TODO:
-// watcher(path.dirname(entryFile), );
+const devServerBundle = require("../index.js").devServerBundle;
+// TODO: add debounce
+watcher(path.dirname(entryFile), (eventType, filename) => {
+  const modifiedFilepath = path.resolve(path.dirname(entryFile), filename);
+  const patchFilename = `${uniqid()}.js`;
+  devServerBundle(
+    [modifiedFilepath],
+    path.join(outputFolder, patchFilename),
+    entryFile
+  );
+
+  clientSockets().forEach((socket) => {
+    socket.send(patchFilename);
+  });
+});
 
 app.get("/", (req, res) => {
   res.send(
@@ -39,6 +53,10 @@ app.get("/", (req, res) => {
 
           socket.addEventListener('message', function (event) {
             console.log('Message from server ', event.data);
+            
+            const script = document.createElement('script');
+            script.src = "./" + event.data;
+            document.head.append(script);
           });
         </script>
       </head>

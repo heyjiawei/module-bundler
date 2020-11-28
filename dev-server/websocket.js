@@ -22,4 +22,6 @@ module.exports = function websocketServer(port) {
       sockets = sockets.filter((s) => s !== socket);
     });
   });
+
+  return () => sockets;
 };
