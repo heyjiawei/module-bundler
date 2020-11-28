@@ -86,3 +86,13 @@ app.use(express.static(folder));
 app.listen(webserverPort, () => {
   console.log(`Page served at http://localhost:${webserverPort}`);
 });
+
+process.on("SIGINT", () => {
+  try {
+    rimraf.sync(outputFolder);
+  } catch (error) {
+    console.error(`Error while deleting ${error}.`);
+  } finally {
+    process.exit();
+  }
+});
