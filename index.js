@@ -44,19 +44,18 @@ function bundle(entryFile, outputFolder) {
   fs.writeFileSync(
     outputFilepath,
     `
-  ((entryFile) => {
-    const moduleMap = ${moduleMap};
-    const exportsMap = {};
+    window.moduleMap = ${moduleMap};
+    window.exportsMap = {};
     const cssMap = {};
 
-    function getModule(filepath) {
+    function getModule(filepath, type) {
       if (filepath.endsWith('.css')) {
         return cssLoader(filepath);
-      } else if (exportsMap[filepath] == null) {
-        exportsMap[filepath] = {};
-        moduleMap[filepath](exportsMap[filepath], getModule);
+      } else if (window.exportsMap[filepath] == null) {
+        window.exportsMap[filepath] = {};
+        window.moduleMap[filepath](window.exportsMap[filepath], getModule);
       }
-      return exportsMap[filepath];
+      return window.exportsMap[filepath];
     }
 
     function cssLoader(filepath) {
@@ -69,7 +68,7 @@ function bundle(entryFile, outputFolder) {
       document.head.append(link);
       cssMap[filename] = true;
     }
-
+  ((entryFile) => {
     return getModule(entryFile);
   })("${entryFilename}")
   `
@@ -78,6 +77,29 @@ function bundle(entryFile, outputFolder) {
     folder: outputFolder,
     main: outputFilepath,
   };
+}
+
+function devServerBundle(filepaths, outputFilepath, entryFilename) {
+  let moduleMap = "{";
+  filepaths.forEach((filepath) => {
+    moduleMap += `"${filepath}": (_exports, _require) => { ${transform(
+      filepath
+    )} },`;
+  });
+  moduleMap += "}";
+
+  fs.writeFileSync(
+    outputFilepath,
+    `
+    ((entryFile) => {
+      Object.assign(window.moduleMap, ${moduleMap});
+      Object.keys(moduleMap).forEach(filepath => {
+        window.exportsMap[filepath] = null;
+      });
+      refreshDOM();
+      return getModule(entryFile);
+    })("${entryFilename}")`
+  );
 }
 
 let scopePerModule = null;
@@ -190,7 +212,7 @@ function transform(filepath) {
       // TODO: Replace all expressions that match localName with scopePerModule[expressionName].codeString
       path.traverse({
         Identifier(path) {
-          console.log("Identifier in FunctionDeclaration");
+          // console.log("Identifier in FunctionDeclaration");
         },
       });
     },
@@ -214,7 +236,7 @@ function transform(filepath) {
           ) {
             transformNode(path, path.node.name);
           } else {
-            console.log("Identifier in VariableDeclaration");
+            // console.log("Identifier in VariableDeclaration");
           }
         },
       });
@@ -429,18 +451,19 @@ function isModuleScope(path, name) {
   }
 }
 
-BASE_DIR =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code";
-const singleEntrypoint =
-  "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/04/fixtures/02/code/main.js";
+// BASE_DIR =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/05/code";
+// const singleEntrypoint =
+//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/05/code/main.js";
 
-try {
-  rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
-} catch (error) {
-  console.error(`Error while deleting ${error}.`);
-}
-bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
+// try {
+//   rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
+// } catch (error) {
+//   console.error(`Error while deleting ${error}.`);
+// }
+// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
 module.exports = bundle;
+module.exports.devServerBundle = devServerBundle;
