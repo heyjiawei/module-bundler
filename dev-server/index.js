@@ -55,9 +55,13 @@ app.get("/", (req, res) => {
             console.log('Message from server ', event.data);
             
             const script = document.createElement('script');
-            script.src = "./" + event.data;
+            script.src = './' + event.data;
             document.head.append(script);
           });
+
+          function refreshDOM() {
+            document.body.innerHTML = "<script src='/index.js' />";
+          }
         </script>
       </head>
       <body>

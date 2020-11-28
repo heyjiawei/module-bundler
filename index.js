@@ -46,17 +46,17 @@ function bundle(entryFile, outputFolder) {
     outputFilepath,
     `
     window.moduleMap = ${moduleMap};
-    const exportsMap = {};
+    window.exportsMap = {};
     const cssMap = {};
 
     function getModule(filepath, type) {
       if (filepath.endsWith('.css')) {
         return cssLoader(filepath);
-      } else if (exportsMap[filepath] == null || type === 'PATCH') {
-        exportsMap[filepath] = {};
-        window.moduleMap[filepath](exportsMap[filepath], getModule);
+      } else if (window.exportsMap[filepath] == null) {
+        window.exportsMap[filepath] = {};
+        window.moduleMap[filepath](window.exportsMap[filepath], getModule);
       }
-      return exportsMap[filepath];
+      return window.exportsMap[filepath];
     }
 
     function cssLoader(filepath) {
@@ -95,8 +95,10 @@ function devServerBundle(filepaths, outputFilepath, entryFilename) {
     ((entryFile) => {
       Object.assign(window.moduleMap, ${moduleMap});
       Object.keys(moduleMap).forEach(filepath => {
-        getModule(filepath, 'PATCH');
+        window.exportsMap[filepath] = null;
       });
+      refreshDOM();
+      return getModule(entryFile);
     })("${entryFilename}")`
   );
 }
