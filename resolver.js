@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const acorn = require("acorn");
+const walk = require("acorn-walk");
 
 const EXPORT_ALL_DECLARATION = "ExportAllDeclaration";
 const EXPORT_NAMED_DECLARATION = "ExportNamedDeclaration";
@@ -12,17 +13,29 @@ const IMPORT_DEFAULT_SPECIFIER = "ImportDefaultSpecifier";
 
 let DEPENDENCY_MAP = new Map();
 
-function createModule(entryPoint, dependencyMap) {
+// Chunking
+let GLOBAL_CHUNK_ID = 1;
+let CHUNK_MODULE_MAP = null;
+let FILENAME_CHUNK_MAP = new Map();
+
+function createModule(entryPoint, dependencyMap, chunkMap) {
   // Assume single entryPoint and entryPoint is a file
   // Read file content as string
   if (dependencyMap) {
     DEPENDENCY_MAP = dependencyMap;
   }
 
-  const { nextModuleAst, dependency } = createDependency(entryPoint, [], true);
+  if (chunkMap) {
+    CHUNK_MODULE_MAP = chunkMap;
+  }
+
+  const { nextModuleAst, dependency } = createDependency(entryPoint, [], {
+    isEntryFile: true,
+    chunkId: 0,
+  });
 
   const dependencyGraph = createGraph(nextModuleAst, dependency.module);
-
+  console.log("Filename chunk map", Array.from(FILENAME_CHUNK_MAP.entries()));
   return dependencyGraph;
 }
 
@@ -48,42 +61,167 @@ function getExports(specifiers) {
   return exports;
 }
 
-function createGraph(ast, moduleNode) {
+function createGraph(ast, moduleNode, chunkId = 0) {
+  if (ast == null) return moduleNode;
   ast.body.forEach((node) => {
     if (node.type === EXPORT_ALL_DECLARATION) {
       const {
         nextModuleAst,
         dependency,
-      } = createDependency(getFilepathFromSourceASTNode(moduleNode, node), [
-        "*",
-      ]);
-      moduleNode.dependencies.push(dependency);
-      createGraph(nextModuleAst, dependency.module);
-    } else if (node.type === EXPORT_NAMED_DECLARATION && node.source) {
-      const { nextModuleAst, dependency } = createDependency(
+      } = createDependency(
         getFilepathFromSourceASTNode(moduleNode, node),
-        getExports(node.specifiers)
+        ["*"],
+        { chunkId }
       );
       moduleNode.dependencies.push(dependency);
-      createGraph(nextModuleAst, dependency.module);
-    } else if (node.type === IMPORT_DECLARATION) {
-      const { nextModuleAst, dependency, isNotJSFile } = createDependency(
+      createGraph(nextModuleAst, dependency.module, chunkId);
+    } else if (node.type === EXPORT_NAMED_DECLARATION && node.source) {
+      const {
+        nextModuleAst,
+        dependency,
+      } = createDependency(
         getFilepathFromSourceASTNode(moduleNode, node),
-        getExports(node.specifiers)
+        getExports(node.specifiers),
+        { chunkId }
+      );
+      moduleNode.dependencies.push(dependency);
+      createGraph(nextModuleAst, dependency.module, chunkId);
+    } else if (node.type === IMPORT_DECLARATION) {
+      const {
+        nextModuleAst,
+        dependency,
+        isNotJSFile,
+      } = createDependency(
+        getFilepathFromSourceASTNode(moduleNode, node),
+        getExports(node.specifiers),
+        { chunkId }
       );
       if (!isNotJSFile) {
         moduleNode.dependencies.push(dependency);
       }
 
       if (nextModuleAst) {
-        createGraph(nextModuleAst, dependency.module);
+        createGraph(nextModuleAst, dependency.module, chunkId);
       }
+    } else {
+      /*
+      Handle all dynamic import statements
+      */
+      walk.simple(node, {
+        ImportExpression(node) {
+          walk.simple(node, {
+            Literal(node) {
+              /* This module will be in 1 (or multiple) chunk(s).
+              When bundler transforms files, they now need to check if this is a separate chunk.
+              
+              If it is not in a separate chunk, it will be in the main chunk
+              that will be sent down initially.
+
+              If it should be in a separate chunk, it will be in a different 
+              "import" file.
+
+              How do we demarcate that this is to be in a separate chunk?
+              chunk Id
+
+              How do you get the chunkId from the file?
+              filename to chunk Id map
+              */
+              const absoluteFilepath = getFilepath(
+                moduleNode.filepath,
+                node.value
+              );
+              if (
+                FILENAME_CHUNK_MAP.has(absoluteFilepath) ||
+                DEPENDENCY_MAP.get(absoluteFilepath) != null
+              ) {
+                // This module was either visited before (1)
+                // or is used as a dependency by another module (2)
+                /*
+              How do we know if it's (1) or (2)
+              If we have some sort of state to check which chunk we are in now.
+                If the chunk only contains this module, then it is (1)
+                If the chunk does not point to this module, then it is (2)
+              */
+              } else {
+                const moduleChunkId = GLOBAL_CHUNK_ID++;
+                CHUNK_MODULE_MAP.set(
+                  moduleChunkId,
+                  new Set([absoluteFilepath])
+                );
+                // Filename chunk map is set when the file is the parent node
+                // of the new chunk
+                FILENAME_CHUNK_MAP.set(absoluteFilepath, moduleChunkId);
+
+                const { nextModuleAst, dependency } = createDependency(
+                  absoluteFilepath,
+                  [],
+                  {
+                    chunkId: moduleChunkId,
+                  }
+                );
+
+                createGraph(nextModuleAst, dependency.module, moduleChunkId);
+              }
+            },
+          });
+        },
+      });
     }
   });
   return moduleNode;
 }
 
-function createDependency(filepath, exports, isEntryFile = false) {
+function getFilepath(parentFilepath, filename) {
+  let filepath = "";
+  if (path.isAbsolute(filename)) {
+    filepath = filename;
+  } else if (isFileOrDirectory(filename)) {
+    filepath = getFilepathOfDirectoryOrFile(parentFilepath, filename);
+  } else {
+    filepath = getPathInNodeModule(parentFilepath, filename);
+  }
+
+  if (fs.existsSync(filepath)) {
+    return filepath;
+  } else {
+    throw new Error(`Unable to resolve "${filename}" from "${parentFilepath}"`);
+  }
+}
+
+function createDependency(
+  filepath,
+  exports,
+  options = {
+    isEntryFile: false,
+  }
+) {
+  const { isEntryFile, chunkId } = options;
+  // This handles synchronous imports in chunks
+  if (chunkId) {
+    const chunkFiles = CHUNK_MODULE_MAP.get(chunkId);
+    chunkFiles.add(filepath);
+
+    const content = fs.readFileSync(filepath, "utf8");
+    const nextModuleAst = acorn.parse(content, {
+      ecmaVersion: 12,
+      sourceType: "module",
+    });
+
+    const module = {
+      filepath,
+      isEntryFile,
+      dependencies: [],
+    };
+    const dependency = {
+      module,
+      exports,
+    };
+
+    return {
+      nextModuleAst,
+      dependency,
+    };
+  }
   // If filepath exist, it would return the same dependency reference
   const existingDependency = DEPENDENCY_MAP.get(filepath);
   if (existingDependency) {

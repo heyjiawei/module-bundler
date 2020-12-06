@@ -27,8 +27,12 @@ function bundle(entryFile, outputFolder) {
   }
   const outputFilepath = path.join(outputFolder, "index.js");
   const dependencyMap = new Map();
-  buildDependencyGraph(entryFile, dependencyMap);
-
+  const chunkMap = new Map();
+  buildDependencyGraph(entryFile, dependencyMap, chunkMap);
+  chunkMap.forEach((value, key) => {
+    console.log(`ChunkId: ${key}`);
+    console.log(Array.from(value));
+  });
   // Create moduleMap
   let moduleMap = "{";
   for (filepath of dependencyMap.keys()) {
@@ -452,17 +456,17 @@ function isModuleScope(path, name) {
   }
 }
 
-// BASE_DIR =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/05/code";
-// const singleEntrypoint =
-//   "/Users/jiawei.chong/Documents/rk-webpack-clone/assignments/02/fixtures/05/code/main.js";
+BASE_DIR =
+  "/home/jiawei/Documents/rk-webpack-clone/assignments/03/fixtures/01/code";
+const singleEntrypoint =
+  "/home/jiawei/Documents/rk-webpack-clone/assignments/03/fixtures/01/code/main.js";
 
 // try {
-//   rimraf.sync("/Users/jiawei.chong/Documents/module-bundler/output");
+//   rimraf.sync("/home/jiawei/Documents/module-bundler/output");
 // } catch (error) {
 //   console.error(`Error while deleting ${error}.`);
 // }
-// bundle(singleEntrypoint, "/Users/jiawei.chong/Documents/module-bundler/output");
+bundle(singleEntrypoint, "/home/jiawei/Documents/module-bundler/output");
 
 // console.log(JSON.stringify(buildDependencyGraph(singleEntrypoint), " ", 2));
 
